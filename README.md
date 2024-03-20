@@ -19,20 +19,20 @@ Before running the benchmarks, ensure you have the following installed:
 
 1. **Prepare the Environment:**
 
-Create directories for datasets and output files, then download the necessary datasets using the provided script.
+    Create directories for datasets and output files, then download the necessary datasets using the provided script.
 
-```bash
-mkdir -p dataset output
-/bin/bash ./download.sh
-```
+    ```bash
+    mkdir -p dataset output
+    /bin/bash ./download.sh
+    ```
 
 2. **Install Dependencies:**
 
-Install all required Python libraries.
+    Install all required Python libraries.
 
-```bash
-pip install -r requirements.txt
-```
+    ```bash
+    pip install -r requirements.txt
+    ```
 
 ## Benchmark Notebooks
 
