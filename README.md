@@ -42,6 +42,7 @@ The repository includes the following Jupyter notebooks for conducting benchmark
 - [OpenSearch](run-opensearch.ipynb)
 - [Qdrant](run-qdrant.ipynb)
 - [Vespa](run-vespa.ipynb)
+- [Weaviate](run-weaviate.ipynb)
 
 Each notebook guides you through the process of setting up the test environment, loading the dataset, executing the search queries, and analyzing the results.
 
