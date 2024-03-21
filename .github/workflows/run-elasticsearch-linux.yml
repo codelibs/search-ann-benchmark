@@ -1,9 +1,11 @@
 name: Run Elasticsearch on Linux
 
 on:
-#  push:
-#    branches:
-#    - main
+  push:
+    branches:
+    - main
+    paths:
+    - run-elasticsearch.ipynb
   pull_request:
     branches:
     - main

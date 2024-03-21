@@ -1,9 +1,11 @@
 name: Run Vespa on Linux
 
 on:
-#  push:
-#    branches:
-#    - main
+  push:
+    branches:
+    - main
+    paths:
+    - run-vespa.ipynb
   pull_request:
     branches:
     - main

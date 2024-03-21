@@ -1,9 +1,11 @@
 name: Run Weaviate on Linux
 
 on:
-#  push:
-#    branches:
-#    - main
+  push:
+    branches:
+    - main
+    paths:
+    - run-weaviate.ipynb
   pull_request:
     branches:
     - main
