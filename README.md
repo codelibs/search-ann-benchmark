@@ -23,7 +23,7 @@ Before running the benchmarks, ensure you have the following installed:
 
     ```bash
     mkdir -p dataset output
-    /bin/bash ./download.sh
+    /bin/bash ./scripts/download.sh
     ```
 
 2. **Install Dependencies:**

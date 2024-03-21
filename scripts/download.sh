@@ -1,13 +1,17 @@
 #!/bin/bash
 
 base_dir=$(cd "$(dirname "$0")" && pwd)
+target=$1
 
-# wikipedia contents
-data_type=passages-c400-jawiki-20230403
-model_type=multilingual-e5-base-passage
-data_dir="${base_dir}/dataset/${data_type}"
-num_of_docs=5555583
-data_files="
+if [[ ${target} = "gha" ]] ; then
+  num_of_docs=120000
+  data_files="
+0000.parquet
+0001.parquet
+"
+else
+  num_of_docs=5555583
+  data_files="
 0000.parquet
 0001.parquet
 0002.parquet
@@ -17,6 +21,12 @@ data_files="
 0006.parquet
 0007.parquet
 "
+fi
+
+# wikipedia contents
+data_type=passages-c400-jawiki-20230403
+model_type=multilingual-e5-base-passage
+data_dir="${base_dir}/../dataset/${data_type}"
 
 mkdir -p "${data_dir}"
 
