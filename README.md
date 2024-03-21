@@ -22,8 +22,7 @@ Before running the benchmarks, ensure you have the following installed:
     Create directories for datasets and output files, then download the necessary datasets using the provided script.
 
     ```bash
-    mkdir -p dataset output
-    /bin/bash ./scripts/download.sh
+    /bin/bash ./scripts/setup.sh
     ```
 
 2. **Install Dependencies:**

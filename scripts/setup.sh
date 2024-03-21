@@ -26,9 +26,11 @@ fi
 # wikipedia contents
 data_type=passages-c400-jawiki-20230403
 model_type=multilingual-e5-base-passage
-data_dir="${base_dir}/../dataset/${data_type}"
 
-mkdir -p "${data_dir}"
+data_dir="${base_dir}/../dataset/${data_type}"
+output_dir="${base_dir}/../output"
+
+mkdir -p "${data_dir}" "${output_dir}"
 
 for data_file in ${data_files} ; do
   if [[ ! -f "${data_dir}/${data_file}" ]] ; then
