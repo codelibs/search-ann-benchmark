@@ -37,11 +37,13 @@ Before running the benchmarks, ensure you have the following installed:
 
 The repository includes the following Jupyter notebooks for conducting benchmarks:
 
-- [Elasticsearch](run-elasticsearch.ipynb): [![Run Elasticsearch on Linux](https://github.com/marevol/search-ann-benchmark/actions/workflows/run-elasticsearch-linux.yml/badge.svg)](https://github.com/marevol/search-ann-benchmark/actions/workflows/run-elasticsearch-linux.yml)
-- [OpenSearch](run-opensearch.ipynb): [![Run OpenSearch on Linux](https://github.com/marevol/search-ann-benchmark/actions/workflows/run-opensearch-linux.yml/badge.svg)](https://github.com/marevol/search-ann-benchmark/actions/workflows/run-opensearch-linux.yml)
-- [Qdrant](run-qdrant.ipynb): [![Run Qdrant on Linux](https://github.com/marevol/search-ann-benchmark/actions/workflows/run-qdrant-linux.yml/badge.svg)](https://github.com/marevol/search-ann-benchmark/actions/workflows/run-qdrant-linux.yml)
-- [Vespa](run-vespa.ipynb): [![Run Vespa on Linux](https://github.com/marevol/search-ann-benchmark/actions/workflows/run-vespa-linux.yml/badge.svg)](https://github.com/marevol/search-ann-benchmark/actions/workflows/run-vespa-linux.yml)
-- [Weaviate](run-weaviate.ipynb): [![Run Weaviate on Linux](https://github.com/marevol/search-ann-benchmark/actions/workflows/run-weaviate-linux.yml/badge.svg)](https://github.com/marevol/search-ann-benchmark/actions/workflows/run-weaviate-linux.yml)
+| Notebook                                 | GitHub Actions                                                                                                                                                                                                                          |
+|------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| [Elasticsearch](run-elasticsearch.ipynb) | [![Run Elasticsearch on Linux](https://github.com/marevol/search-ann-benchmark/actions/workflows/run-elasticsearch-linux.yml/badge.svg)](https://github.com/marevol/search-ann-benchmark/actions/workflows/run-elasticsearch-linux.yml) |
+| [OpenSearch](run-opensearch.ipynb)       | [![Run OpenSearch on Linux](https://github.com/marevol/search-ann-benchmark/actions/workflows/run-opensearch-linux.yml/badge.svg)](https://github.com/marevol/search-ann-benchmark/actions/workflows/run-opensearch-linux.yml)          |
+| [Qdrant](run-qdrant.ipynb)               | [![Run Qdrant on Linux](https://github.com/marevol/search-ann-benchmark/actions/workflows/run-qdrant-linux.yml/badge.svg)](https://github.com/marevol/search-ann-benchmark/actions/workflows/run-qdrant-linux.yml)                      |
+| [Vespa](run-vespa.ipynb)                 | [![Run Vespa on Linux](https://github.com/marevol/search-ann-benchmark/actions/workflows/run-vespa-linux.yml/badge.svg)](https://github.com/marevol/search-ann-benchmark/actions/workflows/run-vespa-linux.yml)                         |
+| [Weaviate](run-weaviate.ipynb)           | [![Run Weaviate on Linux](https://github.com/marevol/search-ann-benchmark/actions/workflows/run-weaviate-linux.yml/badge.svg)](https://github.com/marevol/search-ann-benchmark/actions/workflows/run-weaviate-linux.yml)                |
 
 Each notebook guides you through the process of setting up the test environment, loading the dataset, executing the search queries, and analyzing the results.
 
