@@ -45,4 +45,9 @@ jobs:
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
     - name: Run ANN search
       run: papermill run-opensearch.ipynb output-opensearch-linux.ipynb --log-output
+    - name: 'Upload Results'
+      uses: actions/upload-artifact@v4
+      with:
+        name: performance-result
+        path: results.json
 
