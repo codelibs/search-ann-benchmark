@@ -29,6 +29,7 @@ model_type=multilingual-e5-base-passage
 
 data_dir="${base_dir}/../dataset/${data_type}"
 output_dir="${base_dir}/../output"
+truth_dir="${base_dir}/../dataset/ground_truth"
 
 mkdir -p "${data_dir}" "${output_dir}"
 
@@ -53,5 +54,25 @@ while [[ ${count} -lt ${num_of_docs} ]] ; do
     echo "[OK]"
   fi
   count=$((count + 100000))
+done
+
+mkdir -p "${truth_dir}"
+
+truth_files="
+knn_10.jsonl.gz
+knn_100.jsonl.gz
+knn_400.jsonl.gz
+knn_10_filtered.jsonl.gz
+knn_100_filtered.jsonl.gz
+knn_400_filtered.jsonl.gz
+"
+
+for truth_file in ${truth_files} ; do
+  if [[ ! -f "${truth_dir}/${truth_file}" ]] ; then
+    echo -n "Downloading ${truth_file}... "
+    curl -sL -o "${truth_dir}/${truth_file}" \
+      "https://codelibs.co/download/ann/benchmark/${truth_file}" || exit 1
+    echo "[OK]"
+  fi
 done
 
