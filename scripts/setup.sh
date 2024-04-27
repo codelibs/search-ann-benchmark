@@ -26,10 +26,11 @@ fi
 # wikipedia contents
 data_type=passages-c400-jawiki-20230403
 model_type=multilingual-e5-base-passage
+setting_type=100k-768-m32-ef100-ip
 
 data_dir="${base_dir}/../dataset/${data_type}"
 output_dir="${base_dir}/../output"
-truth_dir="${base_dir}/../dataset/ground_truth"
+truth_dir="${base_dir}/../dataset/ground_truth/${setting_type}"
 
 mkdir -p "${data_dir}" "${output_dir}"
 
@@ -71,7 +72,7 @@ for truth_file in ${truth_files} ; do
   if [[ ! -f "${truth_dir}/${truth_file}" ]] ; then
     echo -n "Downloading ${truth_file}... "
     curl -sL -o "${truth_dir}/${truth_file}" \
-      "https://codelibs.co/download/ann/benchmark/${truth_file}" || exit 1
+      "https://codelibs.co/download/ann/benchmark/${setting_type}/${truth_file}" || exit 1
     echo "[OK]"
   fi
 done
