@@ -49,6 +49,10 @@ The repository includes the following Jupyter notebooks for conducting benchmark
 
 Each notebook guides you through the process of setting up the test environment, loading the dataset, executing the search queries, and analyzing the results.
 
+## Benchmark Results
+
+For a comparison of the results, including response times and precision metrics for different ANN algorithms, see [Benchmark Results Page](https://codelibs.co/benchmark/ann-benchmark.html).
+
 ## Contributing
 
 We welcome contributions!
