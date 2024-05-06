@@ -30,7 +30,7 @@ jobs:
       run: /bin/bash ./scripts/setup.sh gha
     - name: Install Vespa CLI
       run: |
-        vespa_cli_version=8.320.68
+        vespa_cli_version=$(grep vespa_version run-vespa.ipynb | head -n1 | sed -e "s/\\\\//g" -e "s/.*= \"\(.*\)\"n.*/\1/")
         curl -L https://github.com/vespa-engine/vespa/releases/download/v${vespa_cli_version}/vespa-cli_${vespa_cli_version}_linux_amd64.tar.gz | tar xz
         sudo mv vespa-cli_${vespa_cli_version}_linux_amd64/bin/vespa /usr/local/bin
     - name: Set up Python 3.10
