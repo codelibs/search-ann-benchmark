@@ -39,6 +39,22 @@ class MilvusEngine(VectorSearchEngine):
     def __init__(self, dataset_config: DatasetConfig, engine_config: MilvusConfig | None = None):
         engine_config = engine_config or MilvusConfig()
         super().__init__(dataset_config, engine_config)
+        self._session: requests.Session | None = None
+
+    def _get_session(self) -> requests.Session:
+        """Get or create HTTP session for connection pooling."""
+        if self._session is None:
+            self._session = requests.Session()
+            adapter = requests.adapters.HTTPAdapter(pool_connections=10, pool_maxsize=10)
+            self._session.mount("http://", adapter)
+            self._session.mount("https://", adapter)
+        return self._session
+
+    def _close_session(self) -> None:
+        """Close HTTP session."""
+        if self._session is not None:
+            self._session.close()
+            self._session = None
 
     @property
     def milvus_config(self) -> MilvusConfig:
@@ -157,28 +173,44 @@ networks:
         return False
 
     def create_index(self) -> None:
+        from pymilvus import MilvusClient, DataType
+
         cfg = self.dataset_config
         print(f"Creating Collection {cfg.index_name}... ", end="")
 
-        # Create collection via REST API v2
-        schema = {
-            "collectionName": cfg.index_name,
-            "dimension": cfg.dimension,
-            "metricType": self.normalize_distance(cfg.distance),
-            "primaryField": "id",
-            "vectorField": "embedding",
-        }
+        client = MilvusClient(uri=f"http://{self.milvus_config.host}:{self.milvus_config.port}")
 
-        response = requests.post(
-            f"{self.base_url}/v1/vector/collections/create",
-            headers={"Accept": "application/json", "Content-Type": "application/json"},
-            json=schema,
+        schema = MilvusClient.create_schema(auto_id=False, enable_dynamic_field=False)
+        schema.add_field(field_name="id", datatype=DataType.INT64, is_primary=True)
+        schema.add_field(field_name="embedding", datatype=DataType.FLOAT_VECTOR, dim=cfg.dimension)
+        schema.add_field(field_name="page_id", datatype=DataType.INT64)
+        schema.add_field(field_name="rev_id", datatype=DataType.INT64)
+        schema.add_field(field_name="section", datatype=DataType.VARCHAR, max_length=200)
+
+        index_params = client.prepare_index_params()
+        index_params.add_index(
+            field_name="embedding",
+            index_type="HNSW",
+            metric_type=self.normalize_distance(cfg.distance),
+            params={
+                "M": cfg.hnsw_m,
+                "efConstruction": cfg.hnsw_ef_construction,
+            },
         )
 
-        if response.status_code == 200 and response.json().get("code") == 200:
+        client.create_collection(
+            collection_name=cfg.index_name,
+            schema=schema,
+            index_params=index_params,
+        )
+
+        response = client.get_load_state(collection_name=cfg.index_name)
+        if response.get("state") == 3:  # Loaded
             print("[OK]")
         else:
-            print(f"[FAIL] {response.text}")
+            print(f"[FAIL] {response}")
+
+        client.close()
 
     def delete_index(self) -> None:
         cfg = self.dataset_config
@@ -187,8 +219,10 @@ networks:
             f"{self.base_url}/v1/vector/collections/drop",
             headers={"Accept": "application/json", "Content-Type": "application/json"},
             json={"collectionName": cfg.index_name},
+            timeout=10,
         )
         print("[OK]" if response.status_code == 200 else f"[FAIL]\n{response.text}")
+        self._close_session()
 
     def get_index_info(self) -> dict[str, Any]:
         cfg = self.dataset_config
@@ -260,10 +294,11 @@ networks:
             query["filter"] = filter_query
 
         start_time = time.time()
-        response = requests.post(
+        response = self._get_session().post(
             f"{self.base_url}/v2/vectordb/entities/search",
             headers={"Accept": "application/json", "Content-Type": "application/json"},
             json=query,
+            timeout=10,
         )
         took_ms = (time.time() - start_time) * 1000
 
@@ -282,8 +317,10 @@ networks:
         return SearchResult(query_id=0, took_ms=-1, hits=-1, ids=[], scores=[])
 
     def _build_filter_query(self, section: str) -> dict[str, Any]:
+        # Escape quotes to prevent expression injection
+        escaped_section = section.replace("\\", "\\\\").replace('"', '\\"')
         # Milvus uses string filter expressions
-        return f'section == "{section}"'  # type: ignore
+        return f'section == "{escaped_section}"'  # type: ignore
 
     def normalize_distance(self, distance: str) -> str:
         mapping = {

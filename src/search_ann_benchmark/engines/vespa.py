@@ -43,6 +43,22 @@ class VespaEngine(VectorSearchEngine):
     def __init__(self, dataset_config: DatasetConfig, engine_config: VespaConfig | None = None):
         engine_config = engine_config or VespaConfig()
         super().__init__(dataset_config, engine_config)
+        self._session: requests.Session | None = None
+
+    def _get_session(self) -> requests.Session:
+        """Get or create HTTP session for connection pooling."""
+        if self._session is None:
+            self._session = requests.Session()
+            adapter = requests.adapters.HTTPAdapter(pool_connections=10, pool_maxsize=10)
+            self._session.mount("http://", adapter)
+            self._session.mount("https://", adapter)
+        return self._session
+
+    def _close_session(self) -> None:
+        """Close HTTP session."""
+        if self._session is not None:
+            self._session.close()
+            self._session = None
 
     @property
     def vespa_config(self) -> VespaConfig:
@@ -226,8 +242,9 @@ schema {cfg.index_name} {{
     def delete_index(self) -> None:
         cfg = self.dataset_config
         print(f"Deleting {cfg.index_name}... ", end="")
-        response = requests.delete(f"{self.management_url}/application/v2/tenant/default")
+        response = requests.delete(f"{self.management_url}/application/v2/tenant/default", timeout=10)
         print("[OK]" if response.status_code == 200 else f"[FAIL]\n{response.text}")
+        self._close_session()
 
     def get_index_info(self) -> dict[str, Any]:
         cfg = self.dataset_config
@@ -404,10 +421,11 @@ schema {cfg.index_name} {{
             "input.query(q)": query_vector,
         }
 
-        response = requests.post(
+        response = self._get_session().post(
             f"{self.base_url}/search/",
             headers={"Content-Type": "application/json"},
             data=json.dumps(query),
+            timeout=10,
         )
 
         if response.status_code == 200:
@@ -427,7 +445,9 @@ schema {cfg.index_name} {{
         return SearchResult(query_id=0, took_ms=-1, hits=-1, ids=[], scores=[])
 
     def _build_filter_query(self, section: str) -> dict[str, Any]:
-        return f'section contains "{section}"'  # type: ignore
+        # Escape quotes to prevent YQL injection
+        escaped_section = section.replace("\\", "\\\\").replace('"', '\\"')
+        return f'section contains "{escaped_section}"'  # type: ignore
 
     def normalize_distance(self, distance: str) -> str:
         mapping = {

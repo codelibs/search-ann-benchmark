@@ -39,6 +39,22 @@ class OpenSearchEngine(VectorSearchEngine):
         # Override engine from environment
         engine_config.engine = os.getenv("SETTING_ENGINE", engine_config.engine)
         super().__init__(dataset_config, engine_config)
+        self._session: requests.Session | None = None
+
+    def _get_session(self) -> requests.Session:
+        """Get or create HTTP session for connection pooling."""
+        if self._session is None:
+            self._session = requests.Session()
+            adapter = requests.adapters.HTTPAdapter(pool_connections=10, pool_maxsize=10)
+            self._session.mount("http://", adapter)
+            self._session.mount("https://", adapter)
+        return self._session
+
+    def _close_session(self) -> None:
+        """Close HTTP session."""
+        if self._session is not None:
+            self._session.close()
+            self._session = None
 
     @property
     def os_config(self) -> OpenSearchConfig:
@@ -129,8 +145,9 @@ class OpenSearchEngine(VectorSearchEngine):
     def delete_index(self) -> None:
         cfg = self.dataset_config
         print(f"Deleting {cfg.index_name}... ", end="")
-        response = requests.delete(f"{self.base_url}/{cfg.index_name}")
+        response = requests.delete(f"{self.base_url}/{cfg.index_name}", timeout=10)
         print("[OK]" if response.status_code == 200 else f"[FAIL]\n{response.text}")
+        self._close_session()
 
     def get_index_info(self) -> dict[str, Any]:
         cfg = self.dataset_config
@@ -269,9 +286,10 @@ class OpenSearchEngine(VectorSearchEngine):
             "sort": [{"_score": "desc"}],
         }
 
-        response = requests.post(
+        response = self._get_session().post(
             f"{self.base_url}/{cfg.index_name}/_search?request_cache=false",
             json=query_dsl,
+            timeout=10,
         )
 
         if response.status_code == 200:

@@ -37,7 +37,24 @@ class PgvectorEngine(VectorSearchEngine):
     def __init__(self, dataset_config: DatasetConfig, engine_config: PgvectorConfig | None = None):
         engine_config = engine_config or PgvectorConfig()
         super().__init__(dataset_config, engine_config)
-        self._conn = None
+        self._conn: Any = None
+
+    def _get_connection(self) -> Any:
+        """Get or create a database connection for search operations."""
+        if self._conn is None:
+            import psycopg
+            from pgvector.psycopg import register_vector
+
+            pg_cfg = self.pg_config
+            self._conn = psycopg.connect(f"dbname={pg_cfg.dbname} {pg_cfg.conninfo}")
+            register_vector(self._conn)
+        return self._conn
+
+    def _close_connection(self) -> None:
+        """Close database connection."""
+        if self._conn is not None:
+            self._conn.close()
+            self._conn = None
 
     @property
     def pg_config(self) -> PgvectorConfig:
@@ -140,6 +157,9 @@ class PgvectorEngine(VectorSearchEngine):
     def delete_index(self) -> None:
         import psycopg
 
+        # Close search connection first
+        self._close_connection()
+
         cfg = self.dataset_config
         pg_cfg = self.pg_config
         print(f"Deleting {cfg.index_name}... ", end="")
@@ -207,23 +227,32 @@ class PgvectorEngine(VectorSearchEngine):
         top_k: int = 10,
         filter_query: dict[str, Any] | None = None,
     ) -> SearchResult:
-        import psycopg
-        from pgvector.psycopg import register_vector
-
         cfg = self.dataset_config
-        pg_cfg = self.pg_config
 
         distance = self.normalize_distance(cfg.distance)
-        where = f"WHERE {filter_query}" if filter_query else ""
         if cfg.quantization == "halfvec":
             column_name = f"embedding::{cfg.quantization}({cfg.dimension})"
         else:
             column_name = "embedding"
 
+        # Cast query vector to appropriate type for pgvector operators
+        if cfg.quantization == "halfvec":
+            query_cast = f"%s::vector::{cfg.quantization}({cfg.dimension})"
+        else:
+            query_cast = "%s::vector"
+
+        # Build parameterized query to prevent SQL injection
+        params: list[Any] = [query_vector]
+        if filter_query and "section" in filter_query:
+            where = "WHERE section = %s"
+            params.append(filter_query["section"])
+        else:
+            where = ""
+
         query = f"""
             SELECT
                 doc_id,
-                {column_name} {distance} %s AS distance
+                {column_name} {distance} {query_cast} AS distance
             FROM {cfg.index_name}
             {where}
             ORDER BY distance
@@ -232,29 +261,29 @@ class PgvectorEngine(VectorSearchEngine):
 
         start_time = time.time()
         try:
-            with psycopg.connect(f"dbname={pg_cfg.dbname} {pg_cfg.conninfo}") as conn:
-                register_vector(conn)
-                with conn.cursor() as cur:
-                    cur.execute("BEGIN;")
-                    cur.execute(f"SET LOCAL hnsw.ef_search = {cfg.hnsw_ef};")
-                    cur.execute(query, (query_vector,))
-                    docs = cur.fetchall()
-                    took_ms = (time.time() - start_time) * 1000
-                    cur.execute("COMMIT;")
+            conn = self._get_connection()
+            with conn.cursor() as cur:
+                cur.execute("BEGIN;")
+                cur.execute(f"SET LOCAL hnsw.ef_search = {cfg.hnsw_ef};")
+                cur.execute(query, tuple(params))
+                docs = cur.fetchall()
+                took_ms = (time.time() - start_time) * 1000
+                cur.execute("COMMIT;")
 
-                    return SearchResult(
-                        query_id=0,
-                        took_ms=took_ms,
-                        hits=len(docs),
-                        ids=[x[0] for x in docs],
-                        scores=[-x[1] for x in docs],  # Negate for inner product
-                    )
+                return SearchResult(
+                    query_id=0,
+                    took_ms=took_ms,
+                    hits=len(docs),
+                    ids=[x[0] for x in docs],
+                    scores=[-x[1] for x in docs],  # Negate for inner product
+                )
         except Exception as e:
             print(f"[FAIL] {e}")
             return SearchResult(query_id=0, took_ms=-1, hits=-1, ids=[], scores=[])
 
     def _build_filter_query(self, section: str) -> dict[str, Any]:
-        return f"section = '{section}'"  # type: ignore
+        # Return structured dict for parameterized query (prevents SQL injection)
+        return {"section": section}
 
     def normalize_distance(self, distance: str) -> str:
         mapping = {

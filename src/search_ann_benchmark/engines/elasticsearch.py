@@ -35,6 +35,22 @@ class ElasticsearchEngine(VectorSearchEngine):
     def __init__(self, dataset_config: DatasetConfig, engine_config: ElasticsearchConfig | None = None):
         engine_config = engine_config or ElasticsearchConfig()
         super().__init__(dataset_config, engine_config)
+        self._session: requests.Session | None = None
+
+    def _get_session(self) -> requests.Session:
+        """Get or create HTTP session for connection pooling."""
+        if self._session is None:
+            self._session = requests.Session()
+            adapter = requests.adapters.HTTPAdapter(pool_connections=10, pool_maxsize=10)
+            self._session.mount("http://", adapter)
+            self._session.mount("https://", adapter)
+        return self._session
+
+    def _close_session(self) -> None:
+        """Close HTTP session."""
+        if self._session is not None:
+            self._session.close()
+            self._session = None
 
     @property
     def es_config(self) -> ElasticsearchConfig:
@@ -132,11 +148,12 @@ class ElasticsearchEngine(VectorSearchEngine):
     def delete_index(self) -> None:
         cfg = self.dataset_config
         logger.info(f"Deleting index {cfg.index_name}...")
-        response = requests.delete(f"{self.base_url}/{cfg.index_name}")
+        response = requests.delete(f"{self.base_url}/{cfg.index_name}", timeout=10)
         if response.status_code == 200:
             logger.info(f"Index {cfg.index_name} deleted [OK]")
         else:
             logger.error(f"Failed to delete index: {response.text}")
+        self._close_session()
 
     def get_index_info(self) -> dict[str, Any]:
         cfg = self.dataset_config
@@ -287,9 +304,10 @@ class ElasticsearchEngine(VectorSearchEngine):
             "sort": [{"_score": "desc"}],
         }
 
-        response = requests.post(
+        response = self._get_session().post(
             f"{self.base_url}/{cfg.index_name}/_search?request_cache=false",
             json=query_dsl,
+            timeout=10,
         )
 
         if response.status_code == 200:

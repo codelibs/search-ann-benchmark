@@ -34,6 +34,22 @@ class WeaviateEngine(VectorSearchEngine):
     def __init__(self, dataset_config: DatasetConfig, engine_config: WeaviateConfig | None = None):
         engine_config = engine_config or WeaviateConfig()
         super().__init__(dataset_config, engine_config)
+        self._session: requests.Session | None = None
+
+    def _get_session(self) -> requests.Session:
+        """Get or create HTTP session for connection pooling."""
+        if self._session is None:
+            self._session = requests.Session()
+            adapter = requests.adapters.HTTPAdapter(pool_connections=10, pool_maxsize=10)
+            self._session.mount("http://", adapter)
+            self._session.mount("https://", adapter)
+        return self._session
+
+    def _close_session(self) -> None:
+        """Close HTTP session."""
+        if self._session is not None:
+            self._session.close()
+            self._session = None
 
     def _get_class_name(self) -> str:
         """Get Weaviate class name (must start with uppercase)."""
@@ -116,8 +132,9 @@ class WeaviateEngine(VectorSearchEngine):
     def delete_index(self) -> None:
         class_name = self._get_class_name()
         print(f"Deleting {class_name}... ", end="")
-        response = requests.delete(f"{self.base_url}/v1/schema/{class_name}")
+        response = requests.delete(f"{self.base_url}/v1/schema/{class_name}", timeout=10)
         print("[OK]" if response.status_code == 200 else f"[FAIL]\n{response.text}")
+        self._close_session()
 
     def get_index_info(self) -> dict[str, Any]:
         class_name = self._get_class_name()
@@ -206,9 +223,10 @@ class WeaviateEngine(VectorSearchEngine):
 }}"""
 
         start_time = time.time()
-        response = requests.post(
+        response = self._get_session().post(
             f"{self.base_url}/v1/graphql",
             json={"query": query},
+            timeout=10,
         )
         took_ms = (time.time() - start_time) * 1000
 
@@ -227,12 +245,14 @@ class WeaviateEngine(VectorSearchEngine):
         return SearchResult(query_id=0, took_ms=-1, hits=-1, ids=[], scores=[])
 
     def _build_filter_query(self, section: str) -> dict[str, Any]:
+        # Escape quotes to prevent GraphQL injection
+        escaped_section = section.replace("\\", "\\\\").replace('"', '\\"')
         return {
             "where": f"""
       where: {{
         operator: Equal
         path: ["section"]
-        valueString: "{section}"
+        valueString: "{escaped_section}"
       }}
 """
         }
