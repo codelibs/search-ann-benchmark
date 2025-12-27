@@ -1,6 +1,7 @@
 """Weaviate vector search engine implementation."""
 
 import json
+import logging
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -9,6 +10,9 @@ import requests
 
 from search_ann_benchmark.config import DatasetConfig, EngineConfig
 from search_ann_benchmark.core.base import VectorSearchEngine, SearchResult
+from search_ann_benchmark.core.logging import get_logger
+
+logger = get_logger("engines.weaviate")
 
 
 @dataclass
@@ -31,6 +35,11 @@ class WeaviateEngine(VectorSearchEngine):
         engine_config = engine_config or WeaviateConfig()
         super().__init__(dataset_config, engine_config)
 
+    def _get_class_name(self) -> str:
+        """Get Weaviate class name (must start with uppercase)."""
+        name = self.dataset_config.index_name
+        return name[0].upper() + name[1:] if name else "Content"
+
     def get_docker_command(self) -> list[str]:
         return [
             "docker", "run", "-d",
@@ -41,29 +50,39 @@ class WeaviateEngine(VectorSearchEngine):
         ]
 
     def wait_until_ready(self, timeout: int = 60) -> bool:
-        print(f"Waiting for {self.engine_config.container_name}", end="")
-        for _ in range(timeout):
+        logger.info(f"Waiting for {self.engine_config.container_name}...")
+        start = time.time()
+        for attempt in range(timeout):
+            elapsed = time.time() - start
             try:
+                logger.debug(f"Health check attempt {attempt+1}/{timeout}, elapsed={elapsed:.1f}s")
                 response = requests.get(f"{self.base_url}/v1/nodes", timeout=5)
                 if response.status_code == 200:
                     obj = response.json()
                     nodes = obj.get("nodes", [])
-                    if nodes and nodes[0].get("status") == "HEALTHY":
-                        print(" [OK]")
-                        return True
-            except requests.exceptions.RequestException:
-                pass
-            print(".", end="", flush=True)
+                    if nodes:
+                        status = nodes[0].get("status")
+                        logger.debug(f"Health check response: node_status={status}")
+                        if status == "HEALTHY":
+                            logger.info(f"Engine ready after {elapsed:.1f}s [OK]")
+                            return True
+            except requests.exceptions.RequestException as e:
+                logger.debug(f"Health check failed: {type(e).__name__}: {e}")
+            if not logger.isEnabledFor(logging.DEBUG):
+                print(".", end="", flush=True)
             time.sleep(1)
-        print(" [FAIL]")
+        if not logger.isEnabledFor(logging.DEBUG):
+            print("")
+        logger.error(f"Engine not ready after {timeout}s [FAIL]")
         return False
 
     def create_index(self) -> None:
         cfg = self.dataset_config
-        print(f"Creating {cfg.index_name} with {cfg.quantization}... ", end="")
+        class_name = self._get_class_name()
+        print(f"Creating {class_name} with {cfg.quantization}... ", end="")
 
         schema: dict[str, Any] = {
-            "class": cfg.index_name,
+            "class": class_name,
             "vectorIndexType": "hnsw",
             "vectorIndexConfig": {
                 "distance": self.normalize_distance(cfg.distance),
@@ -95,21 +114,21 @@ class WeaviateEngine(VectorSearchEngine):
         print("[OK]" if response.status_code == 200 else f"[FAIL]\n{response.text}")
 
     def delete_index(self) -> None:
-        cfg = self.dataset_config
-        print(f"Deleting {cfg.index_name}... ", end="")
-        response = requests.delete(f"{self.base_url}/v1/schema/{cfg.index_name}")
+        class_name = self._get_class_name()
+        print(f"Deleting {class_name}... ", end="")
+        response = requests.delete(f"{self.base_url}/v1/schema/{class_name}")
         print("[OK]" if response.status_code == 200 else f"[FAIL]\n{response.text}")
 
     def get_index_info(self) -> dict[str, Any]:
-        cfg = self.dataset_config
+        class_name = self._get_class_name()
         response = requests.post(
             f"{self.base_url}/v1/graphql",
             headers={"Content-Type": "application/json"},
-            json={"query": f"{{ Aggregate {{ {cfg.index_name} {{ meta {{ count }} }} }} }}"},
+            json={"query": f"{{ Aggregate {{ {class_name} {{ meta {{ count }} }} }} }}"},
         )
         if response.status_code == 200:
             obj = response.json()
-            count = obj.get("data", {}).get("Aggregate", {}).get(cfg.index_name, [{}])[0].get("meta", {}).get("count", 0)
+            count = obj.get("data", {}).get("Aggregate", {}).get(class_name, [{}])[0].get("meta", {}).get("count", 0)
             return {"num_of_docs": count}
         return {}
 
@@ -119,16 +138,18 @@ class WeaviateEngine(VectorSearchEngine):
         embeddings: list[list[float]],
         ids: list[int],
     ) -> float:
-        cfg = self.dataset_config
-        print(f"Sending {len(ids)} docs... ", end="")
+        class_name = self._get_class_name()
+        logger.debug(f"Preparing batch request: {len(ids)} docs")
 
-        objects = []
-        for doc, embedding, doc_id in zip(documents, embeddings, ids):
-            objects.append({
-                "class": cfg.index_name,
+        # Build batch objects
+        objects = [
+            {
+                "class": class_name,
                 "properties": {"doc_id": doc_id, **doc},
                 "vector": embedding,
-            })
+            }
+            for doc, embedding, doc_id in zip(documents, embeddings, ids)
+        ]
 
         start_time = time.time()
         response = requests.post(
@@ -139,10 +160,19 @@ class WeaviateEngine(VectorSearchEngine):
         elapsed = time.time() - start_time
 
         if response.status_code == 200:
-            print(f"[OK] {elapsed}")
+            # Check for partial failures in batch response
+            result = response.json()
+            if isinstance(result, list):
+                failed_items = [item for item in result if item.get("result", {}).get("errors")]
+                if failed_items:
+                    logger.warning(
+                        f"Partial batch failure: {len(failed_items)}/{len(ids)} docs failed. "
+                        f"First error: {failed_items[0].get('result', {}).get('errors')}"
+                    )
+            logger.debug(f"Batch insert completed: {len(ids)} docs in {elapsed:.3f}s [OK]")
             return elapsed
         else:
-            print(f"[FAIL] {response.status_code} {response.text}")
+            logger.error(f"Batch insert failed: {response.status_code} {response.text[:500]}")
             return 0
 
     def search(
@@ -151,7 +181,7 @@ class WeaviateEngine(VectorSearchEngine):
         top_k: int = 10,
         filter_query: dict[str, Any] | None = None,
     ) -> SearchResult:
-        cfg = self.dataset_config
+        class_name = self._get_class_name()
 
         where_clause = ""
         if filter_query:
@@ -159,7 +189,7 @@ class WeaviateEngine(VectorSearchEngine):
 
         query = f"""{{
   Get {{
-    {cfg.index_name} (
+    {class_name} (
       limit: {top_k}
       nearVector: {{
         vector: {json.dumps(query_vector)}
@@ -184,7 +214,7 @@ class WeaviateEngine(VectorSearchEngine):
 
         if response.status_code == 200:
             obj = response.json()
-            results = obj.get("data", {}).get("Get", {}).get(cfg.index_name, [])
+            results = obj.get("data", {}).get("Get", {}).get(class_name, [])
             return SearchResult(
                 query_id=0,
                 took_ms=took_ms,
@@ -214,19 +244,17 @@ class WeaviateEngine(VectorSearchEngine):
         }
         return mapping.get(distance, distance)
 
-    def wait_for_indexing_complete(self, check_interval: float = 1.0, stable_count: int = 60) -> None:
-        cfg = self.dataset_config
-        print(f"Waiting for {cfg.index_name}", end="")
-        for _ in range(stable_count):
-            try:
-                response = requests.get(f"{self.base_url}/v1/schema/{cfg.index_name}/shards")
-                if response.status_code == 200:
-                    obj = response.json()
-                    if obj and len(obj) > 0 and obj[0].get("status") == "READY":
-                        print(" [OK]")
-                        return
-            except requests.exceptions.RequestException:
-                pass
-            print(".", end="", flush=True)
-            time.sleep(check_interval)
-        print(" [FAIL]")
+    def _is_indexing_complete(self) -> bool:
+        """Check if Weaviate shard is ready."""
+        class_name = self._get_class_name()
+        try:
+            response = requests.get(f"{self.base_url}/v1/schema/{class_name}/shards", timeout=5)
+            if response.status_code == 200:
+                obj = response.json()
+                if obj and len(obj) > 0:
+                    status = obj[0].get("status")
+                    logger.debug(f"Shard status: {status}")
+                    return status == "READY"
+        except requests.exceptions.RequestException as e:
+            logger.debug(f"Indexing check failed: {type(e).__name__}: {e}")
+        return False

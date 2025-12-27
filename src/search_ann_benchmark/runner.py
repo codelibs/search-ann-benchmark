@@ -1,5 +1,6 @@
 """Benchmark runner for vector search engines."""
 
+import logging
 import os
 import re
 import time
@@ -15,12 +16,15 @@ from search_ann_benchmark.config import DatasetConfig, get_dataset_config
 from search_ann_benchmark.core.base import VectorSearchEngine
 from search_ann_benchmark.core.docker import DockerManager
 from search_ann_benchmark.core.embedding import ContentLoader, EmbeddingLoader
+from search_ann_benchmark.core.logging import get_logger
 from search_ann_benchmark.core.metrics import (
     BenchmarkMetrics,
     MetricsCalculator,
     ResultsWriter,
     SearchResultsWriter,
 )
+
+logger = get_logger("runner")
 
 
 class BenchmarkRunner:
@@ -49,43 +53,52 @@ class BenchmarkRunner:
 
     def setup(self) -> None:
         """Set up the benchmark environment."""
-        print(f"=== Setting up {self.engine.engine_name} benchmark ===")
+        logger.info(f"=== Setting up {self.engine.engine_name} benchmark ===")
 
         # Clean up Docker
+        logger.debug("Calling DockerManager.prune()")
         DockerManager.prune()
 
         # Print engine info
-        print(f"<<< {self.engine.engine_name} {self.engine.engine_config.version} >>>")
+        logger.info(f"<<< {self.engine.engine_name} {self.engine.engine_config.version} >>>")
 
         # Start container
         docker_cmd = self.engine.get_docker_command()
         if docker_cmd:
+            logger.debug(f"Docker command: {' '.join(docker_cmd)}")
             self._docker_manager.run(docker_cmd)
         else:
             # For engines using docker-compose (like Milvus)
             if hasattr(self.engine, "generate_compose_file"):
                 compose_file = self.engine.generate_compose_file()
+                logger.debug(f"Using docker-compose: {compose_file}")
                 self._docker_manager.run_compose(compose_file)
 
         # Wait for engine to be ready
+        logger.debug("Calling wait_until_ready()")
+        start = time.time()
         if not self.engine.wait_until_ready():
+            logger.error(f"Failed to start {self.engine.engine_name} after {time.time()-start:.1f}s")
             raise RuntimeError(f"Failed to start {self.engine.engine_name}")
-
-        # Print initial stats
-        self._print_stats()
+        logger.debug(f"Engine ready after {time.time()-start:.1f}s")
 
     def create_index(self) -> None:
         """Create the search index."""
-        print("=== Creating index ===")
+        logger.info("=== Creating index ===")
 
         # Create database if needed (e.g., pgvector)
         if hasattr(self.engine, "create_database"):
+            logger.debug("Creating database...")
             self.engine.create_database()
 
+        logger.debug("Creating index...")
+        start = time.time()
         self.engine.create_index()
+        logger.debug(f"Index created in {time.time()-start:.1f}s")
 
         # Wait for index to be ready if needed
         if hasattr(self.engine, "wait_for_index_ready"):
+            logger.debug("Waiting for index to be ready...")
             self.engine.wait_for_index_ready()
 
         self._print_stats()
@@ -96,8 +109,23 @@ class BenchmarkRunner:
         Returns:
             Indexing results dictionary
         """
-        print("=== Running indexing ===")
+        logger.info("=== Running indexing ===")
         cfg = self.engine.dataset_config
+
+        # Check if dataset exists
+        if not cfg.content_path.exists():
+            raise FileNotFoundError(
+                f"Content path not found: {cfg.content_path}. Run 'bash scripts/setup.sh' to download the dataset."
+            )
+        if not cfg.embedding_path.exists():
+            raise FileNotFoundError(
+                f"Embedding path not found: {cfg.embedding_path}. Run 'bash scripts/setup.sh' to download the dataset."
+            )
+
+        logger.debug(f"Loading documents from {cfg.content_path}")
+        logger.debug(f"Loading embeddings from {cfg.embedding_path}")
+        logger.debug(f"Target index size: {cfg.index_size}, bulk size: {cfg.bulk_size}")
+
         start_time = time.time()
         total_process_time = 0.0
 
@@ -105,6 +133,7 @@ class BenchmarkRunner:
         embeddings: list[list[float]] = []
         ids: list[int] = []
         count = 0
+        batch_num = 0
 
         for row, section_vals in self._content_loader.iter_documents(
             max_size=cfg.index_size,
@@ -112,10 +141,7 @@ class BenchmarkRunner:
         ):
             self.section_values = section_vals
 
-            doc_id, embedding = next(self._embedding_loader.iter_embeddings(
-                start_offset=row.id - 1,
-                max_size=1,
-            ))
+            embedding = self._embedding_loader.get_embedding(row.id)
 
             count += 1
             ids.append(count)
@@ -127,24 +153,35 @@ class BenchmarkRunner:
             })
 
             if len(ids) >= cfg.bulk_size:
+                batch_num += 1
+                batch_start = time.time()
+                logger.debug(f"Inserting batch {batch_num}: {len(ids)} docs (total: {count})")
                 t = self.engine.insert_documents(documents, embeddings, ids)
                 total_process_time += t
+                logger.debug(f"Batch {batch_num} completed in {time.time()-batch_start:.2f}s (process_time: {t:.2f}s)")
                 documents = []
                 embeddings = []
                 ids = []
 
         # Insert remaining documents
         if ids:
+            batch_num += 1
+            batch_start = time.time()
+            logger.debug(f"Inserting final batch {batch_num}: {len(ids)} docs (total: {count})")
             t = self.engine.insert_documents(documents, embeddings, ids)
             total_process_time += t
+            logger.debug(f"Final batch completed in {time.time()-batch_start:.2f}s (process_time: {t:.2f}s)")
 
         # Wait for indexing to complete
+        logger.debug("Calling wait_for_indexing_complete()")
+        wait_start = time.time()
         self.engine.wait_for_indexing_complete()
+        logger.debug(f"Indexing complete wait finished in {time.time()-wait_start:.1f}s")
 
         execution_time = time.time() - start_time
         hours, remainder = divmod(execution_time, 3600)
         minutes, seconds = divmod(remainder, 60)
-        print(f"Execution Time: {int(hours):02d}:{int(minutes):02d}:{seconds:02.2f} ({timedelta(seconds=total_process_time)})")
+        logger.info(f"Indexing complete: {count} docs in {int(hours):02d}:{int(minutes):02d}:{seconds:02.2f} (process_time: {timedelta(seconds=total_process_time)})")
 
         indexing_result = {
             "execution_time": execution_time,
@@ -179,36 +216,42 @@ class BenchmarkRunner:
         cfg = self.engine.dataset_config
         search_results: dict[str, BenchmarkMetrics] = {}
 
-        filter_generator = None
-        if with_filter and self.section_values:
-            filter_generator = self.engine.get_filter_generator(self.section_values)
-
         for page_size in page_sizes:
             suffix = "_filtered" if with_filter else ""
-            print(f"=== Search benchmark: top_{page_size}{suffix} ===")
+            logger.info(f"=== Search benchmark: top_{page_size}{suffix} ===")
 
             output_filename = self.engine.get_output_filename(f"knn_{page_size}{suffix}")
             truth_filename = self._get_ground_truth_filename(page_size, with_filter)
 
-            # Run warmup
-            print(f"Running {warmup_count} warmup queries...")
+            # Run warmup with fresh filter generator
+            warmup_filter = None
+            if with_filter and self.section_values:
+                warmup_filter = self.engine.get_filter_generator(self.section_values)
+            logger.info(f"Running {warmup_count} warmup queries...")
+            warmup_start = time.time()
             self._run_queries(
                 output_path=None,
                 max_size=warmup_count,
                 page_size=page_size,
                 offset=0,
-                filter_generator=filter_generator,
+                filter_generator=warmup_filter,
             )
+            logger.debug(f"Warmup completed in {time.time()-warmup_start:.1f}s")
 
-            # Run actual benchmark
-            print(f"Running {query_count} queries...")
+            # Run actual benchmark with fresh filter generator
+            actual_filter = None
+            if with_filter and self.section_values:
+                actual_filter = self.engine.get_filter_generator(self.section_values)
+            logger.info(f"Running {query_count} queries...")
+            benchmark_start = time.time()
             self._run_queries(
                 output_path=output_filename,
                 max_size=query_count,
                 page_size=page_size,
                 offset=cfg.index_size,
-                filter_generator=filter_generator,
+                filter_generator=actual_filter,
             )
+            logger.debug(f"Benchmark queries completed in {time.time()-benchmark_start:.1f}s")
 
             # Calculate metrics
             metrics = self._metrics_calculator.calculate_from_file(
@@ -260,6 +303,8 @@ class BenchmarkRunner:
             while running:
                 npz_path = cfg.embedding_path / f"{pos}.npz"
                 if not npz_path.exists():
+                    if pos == 0:
+                        raise FileNotFoundError(f"Embedding file not found: {npz_path}. Run 'bash scripts/setup.sh' to download the dataset.")
                     pos = 0
                     continue
 
@@ -300,8 +345,15 @@ class BenchmarkRunner:
                         )
 
                     count += 1
-                    if count % 10000 == 0:
-                        print(f"Sent {count}/{max_size} queries.")
+                    if logger.isEnabledFor(logging.DEBUG):
+                        if count % 1000 == 0:
+                            elapsed = time.time() - start_time
+                            qps = count / elapsed if elapsed > 0 else 0
+                            logger.debug(f"Query progress: {count}/{max_size} ({qps:.1f} qps, elapsed={elapsed:.1f}s)")
+                    elif count % 10000 == 0:
+                        elapsed = time.time() - start_time
+                        qps = count / elapsed if elapsed > 0 else 0
+                        logger.info(f"Sent {count}/{max_size} queries ({qps:.1f} qps)")
 
                 pos += 100000
                 if pos > cfg.num_of_docs:
@@ -314,7 +366,8 @@ class BenchmarkRunner:
         execution_time = time.time() - start_time
         hours, remainder = divmod(execution_time, 3600)
         minutes, seconds = divmod(remainder, 60)
-        print(f"Execution Time: {int(hours):02d}:{int(minutes):02d}:{seconds:02.2f}")
+        qps = count / execution_time if execution_time > 0 else 0
+        logger.info(f"Queries complete: {count} queries in {int(hours):02d}:{int(minutes):02d}:{seconds:02.2f} ({qps:.1f} qps)")
 
     def _get_ground_truth_filename(self, page_size: int, with_filter: bool) -> str:
         """Get ground truth filename for precision calculation."""
@@ -351,15 +404,16 @@ class BenchmarkRunner:
 
     def _print_stats(self) -> None:
         """Print Docker and index statistics."""
-        print(DockerManager.get_system_df())
+        logger.debug("Getting Docker system info...")
+        logger.info(DockerManager.get_system_df())
         DockerManager.get_container_stats()
         info = self.engine.get_index_info()
         if info:
-            print(f"Index info: {info}")
+            logger.info(f"Index info: {info}")
 
     def cleanup(self) -> None:
         """Clean up after benchmark."""
-        print("=== Cleaning up ===")
+        logger.info("=== Cleaning up ===")
         self.engine.delete_index()
 
         docker_cmd = self.engine.get_docker_command()

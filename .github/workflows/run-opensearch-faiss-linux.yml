@@ -1,12 +1,12 @@
-name: Run Chroma benchmark on Linux
+name: Run OpenSearch (faiss) benchmark on Linux
 
 on:
   push:
     branches:
       - main
     paths:
-      - 'src/search_ann_benchmark/engines/chroma.py'
-      - '.github/workflows/run-chroma-linux.yml'
+      - 'src/search_ann_benchmark/engines/opensearch.py'
+      - '.github/workflows/run-opensearch-faiss-linux.yml'
   pull_request:
     branches:
       - main
@@ -23,8 +23,8 @@ on:
           - 5m-768-m48-efc200-ef100-ip
 
 env:
-  ENGINE_NAME: chroma
-  ENGINE_VERSION: "0.5.7"
+  ENGINE_NAME: opensearch
+  ENGINE_VERSION: "2.19.1"
 
 jobs:
   benchmark:
@@ -56,19 +56,21 @@ jobs:
         uses: astral-sh/setup-uv@v4
 
       - name: Install dependencies
-        run: uv sync --extra chroma
+        run: uv sync
 
       - name: Run benchmark
         env:
           TARGET_CONFIG: ${{ github.event.inputs.target_config || '100k-768-m32-efc200-ef100-ip' }}
+          PRODUCT_VARIANT: "faiss"
         run: |
           uv run search-ann-benchmark run ${ENGINE_NAME} \
             --target ${TARGET_CONFIG} \
             --version ${ENGINE_VERSION} \
-            --no-filter
+            --engine faiss \
+            --variant faiss
 
       - name: Upload results
         uses: actions/upload-artifact@v4
         with:
-          name: chroma-results
+          name: opensearch-faiss-results
           path: results.json

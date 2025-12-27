@@ -1,11 +1,15 @@
 """pgvector (PostgreSQL) vector search engine implementation."""
 
+import logging
 import time
 from dataclasses import dataclass
 from typing import Any
 
 from search_ann_benchmark.config import DatasetConfig, EngineConfig
 from search_ann_benchmark.core.base import VectorSearchEngine, SearchResult
+from search_ann_benchmark.core.logging import get_logger
+
+logger = get_logger("engines.pgvector")
 
 
 @dataclass
@@ -52,20 +56,26 @@ class PgvectorEngine(VectorSearchEngine):
     def wait_until_ready(self, timeout: int = 60) -> bool:
         import psycopg
 
-        print(f"Waiting for {self.engine_config.container_name}", end="")
-        for _ in range(timeout):
+        logger.info(f"Waiting for {self.engine_config.container_name}...")
+        start = time.time()
+        for attempt in range(timeout):
+            elapsed = time.time() - start
             try:
+                logger.debug(f"Health check attempt {attempt+1}/{timeout}, elapsed={elapsed:.1f}s")
                 with psycopg.connect(self.pg_config.conninfo) as conn:
                     with conn.cursor() as cur:
                         cur.execute("SELECT 1")
                         if cur.fetchone()[0] == 1:
-                            print(" [OK]")
+                            logger.info(f"Engine ready after {elapsed:.1f}s [OK]")
                             return True
-            except Exception:
-                pass
-            print(".", end="", flush=True)
+            except Exception as e:
+                logger.debug(f"Health check failed: {type(e).__name__}: {e}")
+            if not logger.isEnabledFor(logging.DEBUG):
+                print(".", end="", flush=True)
             time.sleep(1)
-        print(" [FAIL]")
+        if not logger.isEnabledFor(logging.DEBUG):
+            print("")
+        logger.error(f"Engine not ready after {timeout}s [FAIL]")
         return False
 
     def create_database(self) -> None:
@@ -83,16 +93,10 @@ class PgvectorEngine(VectorSearchEngine):
 
         cfg = self.dataset_config
         pg_cfg = self.pg_config
-        print(f"Creating {cfg.index_name} with {cfg.quantization}... ", end="")
+        vector_type = cfg.quantization if cfg.quantization and cfg.quantization != "none" else "vector"
+        print(f"Creating {cfg.index_name} table with {vector_type}... ", end="")
 
-        vector_type = cfg.quantization if cfg.quantization else "vector"
-        vector_ops = f"{vector_type}_ip_ops" if cfg.distance == "<#>" else f"{vector_type}_cosine_ops"
-
-        if cfg.quantization == "halfvec":
-            create_idx = f"CREATE INDEX ON {cfg.index_name} USING hnsw ((embedding::{vector_type}({cfg.dimension})) {vector_ops}) WITH (m = {cfg.hnsw_m}, ef_construction = {cfg.hnsw_ef_construction});"
-        else:
-            create_idx = f"CREATE INDEX ON {cfg.index_name} USING hnsw (embedding {vector_ops}) WITH (m = {cfg.hnsw_m}, ef_construction = {cfg.hnsw_ef_construction});"
-
+        # Create table without HNSW index (index will be created after data insertion)
         with psycopg.connect(f"dbname={pg_cfg.dbname} {pg_cfg.conninfo}") as conn:
             conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
             conn.execute(f"""
@@ -103,9 +107,35 @@ class PgvectorEngine(VectorSearchEngine):
                     section character(128),
                     embedding {vector_type}({cfg.dimension})
                 );
-                {create_idx}
             """)
             print(" [OK]")
+
+    def create_hnsw_index(self) -> None:
+        """Create HNSW index after all data has been inserted."""
+        import psycopg
+
+        cfg = self.dataset_config
+        pg_cfg = self.pg_config
+        print(f"Creating HNSW index on {cfg.index_name}... ", end="")
+
+        distance = self.normalize_distance(cfg.distance)
+        vector_type = cfg.quantization if cfg.quantization and cfg.quantization != "none" else "vector"
+        vector_ops = f"{vector_type}_ip_ops" if distance == "<#>" else f"{vector_type}_cosine_ops"
+
+        if cfg.quantization == "halfvec":
+            create_idx = f"CREATE INDEX ON {cfg.index_name} USING hnsw ((embedding::{vector_type}({cfg.dimension})) {vector_ops}) WITH (m = {cfg.hnsw_m}, ef_construction = {cfg.hnsw_ef_construction});"
+        else:
+            create_idx = f"CREATE INDEX ON {cfg.index_name} USING hnsw (embedding {vector_ops}) WITH (m = {cfg.hnsw_m}, ef_construction = {cfg.hnsw_ef_construction});"
+
+        start_time = time.time()
+        with psycopg.connect(f"dbname={pg_cfg.dbname} {pg_cfg.conninfo}") as conn:
+            conn.execute(create_idx)
+        elapsed = time.time() - start_time
+        print(f"[OK] {elapsed:.2f}s")
+
+    def wait_for_indexing_complete(self) -> None:
+        """Create HNSW index after all documents have been inserted."""
+        self.create_hnsw_index()
 
     def delete_index(self) -> None:
         import psycopg
@@ -139,33 +169,36 @@ class PgvectorEngine(VectorSearchEngine):
         ids: list[int],
     ) -> float:
         import psycopg
+        from io import StringIO
 
         cfg = self.dataset_config
         pg_cfg = self.pg_config
         print(f"Sending {len(ids)} docs... ", end="")
 
-        query = f"INSERT INTO {cfg.index_name} (doc_id, page_id, rev_id, section, embedding) VALUES (%s, %s, %s, %s, %s)"
-        docs = []
+        # Build COPY data in tab-separated format
+        buffer = StringIO()
         for doc, embedding, doc_id in zip(documents, embeddings, ids):
-            docs.append((
-                doc_id,
-                doc.get("page_id"),
-                doc.get("rev_id"),
-                doc.get("section"),
-                embedding,
-            ))
+            page_id = doc.get("page_id") or "\\N"
+            rev_id = doc.get("rev_id") or "\\N"
+            section = (doc.get("section") or "\\N").replace("\t", " ").replace("\n", " ")
+            # Format embedding as PostgreSQL array literal: [1.0,2.0,3.0]
+            embedding_str = "[" + ",".join(str(v) for v in embedding) + "]"
+            buffer.write(f"{doc_id}\t{page_id}\t{rev_id}\t{section}\t{embedding_str}\n")
+        buffer.seek(0)
 
         start_time = time.time()
         try:
             with psycopg.connect(f"dbname={pg_cfg.dbname} {pg_cfg.conninfo}") as conn:
                 with conn.cursor() as cur:
-                    cur.executemany(query, docs)
+                    with cur.copy(f"COPY {cfg.index_name} (doc_id, page_id, rev_id, section, embedding) FROM STDIN") as copy:
+                        copy.write(buffer.read())
                     conn.commit()
                     elapsed = time.time() - start_time
-                    print(f"[OK] {elapsed}")
+                    print(f"[OK] {elapsed:.3f}s")
                     return elapsed
         except Exception as e:
             print(f"[FAIL] {e}")
+            logger.error(f"COPY failed: {e}")
             return 0
 
     def search(
@@ -180,6 +213,7 @@ class PgvectorEngine(VectorSearchEngine):
         cfg = self.dataset_config
         pg_cfg = self.pg_config
 
+        distance = self.normalize_distance(cfg.distance)
         where = f"WHERE {filter_query}" if filter_query else ""
         if cfg.quantization == "halfvec":
             column_name = f"embedding::{cfg.quantization}({cfg.dimension})"
@@ -189,7 +223,7 @@ class PgvectorEngine(VectorSearchEngine):
         query = f"""
             SELECT
                 doc_id,
-                {column_name} {cfg.distance} %s AS distance
+                {column_name} {distance} %s AS distance
             FROM {cfg.index_name}
             {where}
             ORDER BY distance

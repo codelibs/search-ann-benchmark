@@ -1,7 +1,12 @@
 """Docker container management utilities."""
 
 import subprocess
+import time
 from typing import Any
+
+from search_ann_benchmark.core.logging import get_logger
+
+logger = get_logger("docker")
 
 
 class DockerManager:
@@ -24,15 +29,19 @@ class DockerManager:
         Returns:
             True if successful
         """
-        print(f"Starting {self.container_name}... ", end="")
+        logger.info(f"Starting {self.container_name}...")
+        logger.debug(f"Command: {' '.join(docker_cmd)}")
+        start = time.time()
         result = subprocess.run(docker_cmd, capture_output=True, text=True)
+        elapsed = time.time() - start
         if result.returncode == 0:
-            print("[OK]")
+            logger.info(f"Started {self.container_name} in {elapsed:.1f}s [OK]")
+            logger.debug(f"stdout: {result.stdout[:500] if result.stdout else '(empty)'}")
             return True
         else:
-            print("[FAIL]")
-            print(f"STDOUT: {result.stdout}")
-            print(f"STDERR: {result.stderr}")
+            logger.error(f"Failed to start {self.container_name} after {elapsed:.1f}s [FAIL]")
+            logger.error(f"stdout: {result.stdout}")
+            logger.error(f"stderr: {result.stderr}")
             return False
 
     def stop(self) -> bool:
@@ -41,19 +50,21 @@ class DockerManager:
         Returns:
             True if successful
         """
-        print(f"Stopping {self.container_name}... ", end="")
+        logger.info(f"Stopping {self.container_name}...")
+        start = time.time()
         result = subprocess.run(
             ["docker", "stop", self.container_name],
             capture_output=True,
             text=True,
         )
+        elapsed = time.time() - start
         if result.returncode == 0:
-            print("[OK]")
+            logger.info(f"Stopped {self.container_name} in {elapsed:.1f}s [OK]")
             return True
         else:
-            print("[FAIL]")
-            print(f"STDOUT: {result.stdout}")
-            print(f"STDERR: {result.stderr}")
+            logger.error(f"Failed to stop {self.container_name} after {elapsed:.1f}s [FAIL]")
+            logger.error(f"stdout: {result.stdout}")
+            logger.error(f"stderr: {result.stderr}")
             return False
 
     @staticmethod
@@ -63,18 +74,20 @@ class DockerManager:
         Returns:
             True if successful
         """
-        print("Cleaning up Docker... ", end="")
+        logger.debug("Running docker system prune...")
+        start = time.time()
         result = subprocess.run(
             ["docker", "system", "prune", "-f"],
             capture_output=True,
             text=True,
         )
+        elapsed = time.time() - start
         if result.returncode == 0:
-            print("[OK]")
+            logger.debug(f"Docker prune completed in {elapsed:.1f}s [OK]")
             return True
         else:
-            print("[FAIL]")
-            print(f"STDERR: {result.stderr}")
+            logger.error(f"Docker prune failed after {elapsed:.1f}s [FAIL]")
+            logger.error(f"stderr: {result.stderr}")
             return False
 
     @staticmethod
@@ -98,6 +111,7 @@ class DockerManager:
         Returns:
             Dictionary mapping container name to stats
         """
+        logger.debug("Getting container stats...")
         result = subprocess.run(
             ["docker", "container", "stats", "--no-stream"],
             capture_output=True,
@@ -105,7 +119,7 @@ class DockerManager:
         )
         containers: dict[str, dict[str, Any]] = {}
         if result.returncode == 0:
-            print(result.stdout)
+            logger.info(result.stdout)
             for line in result.stdout.split("\n"):
                 if line.startswith("CONTAINER") or len(line) == 0:
                     continue
@@ -124,7 +138,7 @@ class DockerManager:
                         "pids": values[13],
                     }
         else:
-            print(result.stderr)
+            logger.error(result.stderr)
         return containers
 
     def run_compose(self, compose_file: str, project_name: str | None = None) -> bool:
@@ -142,14 +156,17 @@ class DockerManager:
             cmd.extend(["-p", project_name])
         cmd.extend(["up", "-d"])
 
-        print(f"Starting services from {compose_file}... ", end="")
+        logger.info(f"Starting services from {compose_file}...")
+        logger.debug(f"Command: {' '.join(cmd)}")
+        start = time.time()
         result = subprocess.run(cmd, capture_output=True, text=True)
+        elapsed = time.time() - start
         if result.returncode == 0:
-            print("[OK]")
+            logger.info(f"Services started in {elapsed:.1f}s [OK]")
             return True
         else:
-            print("[FAIL]")
-            print(f"STDERR: {result.stderr}")
+            logger.error(f"Failed to start services after {elapsed:.1f}s [FAIL]")
+            logger.error(f"stderr: {result.stderr}")
             return False
 
     def stop_compose(self, compose_file: str, project_name: str | None = None) -> bool:
@@ -167,12 +184,15 @@ class DockerManager:
             cmd.extend(["-p", project_name])
         cmd.extend(["down", "-v"])
 
-        print(f"Stopping services from {compose_file}... ", end="")
+        logger.info(f"Stopping services from {compose_file}...")
+        logger.debug(f"Command: {' '.join(cmd)}")
+        start = time.time()
         result = subprocess.run(cmd, capture_output=True, text=True)
+        elapsed = time.time() - start
         if result.returncode == 0:
-            print("[OK]")
+            logger.info(f"Services stopped in {elapsed:.1f}s [OK]")
             return True
         else:
-            print("[FAIL]")
-            print(f"STDERR: {result.stderr}")
+            logger.error(f"Failed to stop services after {elapsed:.1f}s [FAIL]")
+            logger.error(f"stderr: {result.stderr}")
             return False

@@ -1,6 +1,7 @@
 """Milvus vector search engine implementation."""
 
 import json
+import logging
 import os
 import time
 from dataclasses import dataclass
@@ -11,6 +12,9 @@ import requests
 
 from search_ann_benchmark.config import DatasetConfig, EngineConfig
 from search_ann_benchmark.core.base import VectorSearchEngine, SearchResult
+from search_ann_benchmark.core.logging import get_logger
+
+logger = get_logger("engines.milvus")
 
 
 @dataclass
@@ -119,9 +123,12 @@ networks:
         return str(cfg.compose_yaml_path)
 
     def wait_until_ready(self, timeout: int = 120) -> bool:
-        print(f"Waiting for {self.engine_config.container_name}", end="")
-        for _ in range(timeout):
+        logger.info(f"Waiting for {self.engine_config.container_name}...")
+        start = time.time()
+        for attempt in range(timeout):
+            elapsed = time.time() - start
             try:
+                logger.debug(f"Health check attempt {attempt+1}/{timeout}, elapsed={elapsed:.1f}s")
                 response = requests.post(
                     f"{self.base_url}/v1/vector/collections/create",
                     headers={"Accept": "application/json", "Content-Type": "application/json"},
@@ -129,8 +136,9 @@ networks:
                     timeout=5,
                 )
                 obj = response.json()
+                logger.debug(f"Health check response: status={response.status_code}, code={obj.get('code')}")
                 if response.status_code == 200 and obj.get("code") == 200:
-                    print("[OK]")
+                    logger.info(f"Engine ready after {elapsed:.1f}s [OK]")
                     # Clean up healthcheck collection
                     requests.post(
                         f"{self.base_url}/v1/vector/collections/drop",
@@ -138,11 +146,14 @@ networks:
                         json={"collectionName": "healthcheck"},
                     )
                     return True
-            except requests.exceptions.RequestException:
-                pass
-            print(".", end="", flush=True)
+            except requests.exceptions.RequestException as e:
+                logger.debug(f"Health check failed: {type(e).__name__}: {e}")
+            if not logger.isEnabledFor(logging.DEBUG):
+                print(".", end="", flush=True)
             time.sleep(1)
-        print("[FAIL]")
+        if not logger.isEnabledFor(logging.DEBUG):
+            print("")
+        logger.error(f"Engine not ready after {timeout}s [FAIL]")
         return False
 
     def create_index(self) -> None:
@@ -202,15 +213,13 @@ networks:
         ids: list[int],
     ) -> float:
         cfg = self.dataset_config
-        print(f"Sending {len(ids)} docs... ", end="")
+        logger.debug(f"Preparing insert request: {len(ids)} docs")
 
-        docs = []
-        for doc, embedding, doc_id in zip(documents, embeddings, ids):
-            docs.append({
-                "id": doc_id,
-                "embedding": embedding,
-                **doc,
-            })
+        # Build document list for batch insert
+        docs = [
+            {"id": doc_id, "embedding": embedding, **doc}
+            for doc, embedding, doc_id in zip(documents, embeddings, ids)
+        ]
 
         start_time = time.time()
         response = requests.post(
@@ -220,11 +229,13 @@ networks:
         )
         elapsed = time.time() - start_time
 
-        if response.json().get("code") == 200:
-            print(f"[OK] {elapsed}")
+        result = response.json()
+        if result.get("code") == 200:
+            insert_count = result.get("data", {}).get("insertCount", len(ids))
+            logger.debug(f"Insert completed: {insert_count} docs in {elapsed:.3f}s [OK]")
             return elapsed
         else:
-            print(f"[FAIL] {response.status_code} {response.text}")
+            logger.error(f"Insert failed: code={result.get('code')} message={result.get('message')}")
             return 0
 
     def search(

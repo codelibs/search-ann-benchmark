@@ -1,6 +1,7 @@
 """OpenSearch vector search engine implementation."""
 
 import json
+import logging
 import os
 import time
 from dataclasses import dataclass
@@ -10,6 +11,9 @@ import requests
 
 from search_ann_benchmark.config import DatasetConfig, EngineConfig
 from search_ann_benchmark.core.base import VectorSearchEngine, SearchResult
+from search_ann_benchmark.core.logging import get_logger
+
+logger = get_logger("engines.opensearch")
 
 
 @dataclass
@@ -56,18 +60,25 @@ class OpenSearchEngine(VectorSearchEngine):
         ]
 
     def wait_until_ready(self, timeout: int = 60) -> bool:
-        print(f"Waiting for {self.engine_config.container_name}", end="")
-        for _ in range(timeout):
+        logger.info(f"Waiting for {self.engine_config.container_name}...")
+        start = time.time()
+        for attempt in range(timeout):
+            elapsed = time.time() - start
             try:
+                logger.debug(f"Health check attempt {attempt+1}/{timeout}, elapsed={elapsed:.1f}s")
                 response = requests.get(f"{self.base_url}/", timeout=5)
                 if response.status_code == 200:
-                    print("[OK]")
+                    logger.info(f"Engine ready after {elapsed:.1f}s [OK]")
                     return True
-            except requests.exceptions.RequestException:
-                pass
-            print(".", end="", flush=True)
+                logger.debug(f"Health check response: status={response.status_code}")
+            except requests.exceptions.RequestException as e:
+                logger.debug(f"Health check failed: {type(e).__name__}: {e}")
+            if not logger.isEnabledFor(logging.DEBUG):
+                print(".", end="", flush=True)
             time.sleep(1)
-        print("[FAIL]")
+        if not logger.isEnabledFor(logging.DEBUG):
+            print("")
+        logger.error(f"Engine not ready after {timeout}s [FAIL]")
         return False
 
     def create_index(self, number_of_shards: int = 1, number_of_replicas: int = 0) -> None:
@@ -133,58 +144,103 @@ class OpenSearchEngine(VectorSearchEngine):
                 }
         return {}
 
+    def _generate_bulk_ndjson(
+        self,
+        documents: list[dict[str, Any]],
+        embeddings: list[list[float]],
+        ids: list[int],
+    ) -> str:
+        """Generate NDJSON bulk request body efficiently."""
+        cfg = self.dataset_config
+        lines = []
+        for doc, embedding, doc_id in zip(documents, embeddings, ids):
+            lines.append(json.dumps({"index": {"_index": cfg.index_name, "_id": doc_id}}))
+            lines.append(json.dumps({**doc, "embedding": embedding}))
+        return "\n".join(lines) + "\n"
+
     def insert_documents(
         self,
         documents: list[dict[str, Any]],
         embeddings: list[list[float]],
         ids: list[int],
     ) -> float:
-        cfg = self.dataset_config
-        print(f"Sending {len(ids)} docs... ", end="")
+        logger.debug(f"Preparing bulk request: {len(ids)} docs")
 
-        bulk_data = []
-        for doc, embedding, doc_id in zip(documents, embeddings, ids):
-            bulk_data.append(json.dumps({"index": {"_index": cfg.index_name, "_id": doc_id}}))
-            doc_with_embedding = {**doc, "embedding": embedding}
-            bulk_data.append(json.dumps(doc_with_embedding))
+        bulk_body = self._generate_bulk_ndjson(documents, embeddings, ids)
 
+        start = time.time()
         response = requests.post(
             f"{self.base_url}/_bulk",
             headers={"Content-Type": "application/x-ndjson"},
-            data="\n".join(bulk_data) + "\n",
+            data=bulk_body,
         )
+        elapsed = time.time() - start
 
         if response.status_code == 200:
-            t = response.json().get("took", 0) / 1000
-            print(f"[OK] {t}")
-            return t
+            result = response.json()
+            server_took = result.get("took", 0) / 1000
+
+            # Check for partial failures in bulk response
+            if result.get("errors", False):
+                failed_items = [
+                    item for item in result.get("items", [])
+                    if item.get("index", {}).get("status", 200) >= 400
+                ]
+                if failed_items:
+                    logger.warning(
+                        f"Partial bulk failure: {len(failed_items)}/{len(ids)} docs failed. "
+                        f"First error: {failed_items[0]}"
+                    )
+
+            logger.debug(f"Bulk insert completed: {len(ids)} docs, server_took={server_took:.3f}s, total={elapsed:.3f}s [OK]")
+            return server_took
         else:
-            print(f"[FAIL] {response.status_code} {response.text}")
+            logger.error(f"Bulk insert failed: {response.status_code} {response.text[:500]}")
             return 0
 
     def flush_index(self) -> None:
         cfg = self.dataset_config
-        print(f"Flushing {cfg.index_name}... ", end="")
+        logger.info(f"Flushing {cfg.index_name}...")
+        start = time.time()
         response = requests.post(f"{self.base_url}/{cfg.index_name}/_flush", timeout=600)
-        print("[OK]" if response.status_code == 200 else f"[FAIL]\n{response.text}")
+        elapsed = time.time() - start
+        if response.status_code == 200:
+            logger.info(f"Flush completed in {elapsed:.1f}s [OK]")
+        else:
+            logger.error(f"Flush failed after {elapsed:.1f}s: {response.text}")
 
     def refresh_index(self) -> None:
         cfg = self.dataset_config
-        print(f"Refreshing {cfg.index_name}... ", end="")
+        logger.info(f"Refreshing {cfg.index_name}...")
+        start = time.time()
         response = requests.post(f"{self.base_url}/{cfg.index_name}/_refresh", timeout=600)
-        print("[OK]" if response.status_code == 200 else f"[FAIL]\n{response.text}")
+        elapsed = time.time() - start
+        if response.status_code == 200:
+            logger.info(f"Refresh completed in {elapsed:.1f}s [OK]")
+        else:
+            logger.error(f"Refresh failed after {elapsed:.1f}s: {response.text}")
 
     def close_index(self) -> None:
         cfg = self.dataset_config
-        print(f"Closing {cfg.index_name}... ", end="")
+        logger.info(f"Closing {cfg.index_name}...")
+        start = time.time()
         response = requests.post(f"{self.base_url}/{cfg.index_name}/_close", timeout=600)
-        print("[OK]" if response.status_code == 200 else f"[FAIL]\n{response.text}")
+        elapsed = time.time() - start
+        if response.status_code == 200:
+            logger.info(f"Close completed in {elapsed:.1f}s [OK]")
+        else:
+            logger.error(f"Close failed after {elapsed:.1f}s: {response.text}")
 
     def open_index(self) -> None:
         cfg = self.dataset_config
-        print(f"Opening {cfg.index_name}... ", end="")
+        logger.info(f"Opening {cfg.index_name}...")
+        start = time.time()
         response = requests.post(f"{self.base_url}/{cfg.index_name}/_open", timeout=600)
-        print("[OK]" if response.status_code == 200 else f"[FAIL]\n{response.text}")
+        elapsed = time.time() - start
+        if response.status_code == 200:
+            logger.info(f"Open completed in {elapsed:.1f}s [OK]")
+        else:
+            logger.error(f"Open failed after {elapsed:.1f}s: {response.text}")
 
     def search(
         self,
@@ -247,9 +303,44 @@ class OpenSearchEngine(VectorSearchEngine):
         }
         return mapping.get(distance, distance)
 
+    def _is_index_ready(self) -> bool:
+        """Check if index is in ready state (green/yellow status)."""
+        cfg = self.dataset_config
+        try:
+            response = requests.get(
+                f"{self.base_url}/_cluster/health/{cfg.index_name}",
+                params={"timeout": "1s"},
+                timeout=5,
+            )
+            if response.status_code == 200:
+                status = response.json().get("status")
+                return status in ("green", "yellow")
+        except requests.exceptions.RequestException:
+            pass
+        return False
+
     def wait_for_indexing_complete(self, check_interval: float = 1.0, stable_count: int = 30) -> None:
+        """Wait for indexing to complete using flush/close/open/refresh cycle."""
+        logger.debug("Starting indexing complete sequence (flush/close/open/refresh)")
         self.flush_index()
         self.close_index()
-        time.sleep(10)
+
+        # Wait for index to be closed (poll instead of fixed sleep)
+        logger.debug("Waiting for index to be closed...")
+        for _ in range(30):
+            time.sleep(1)
+            # Index should not be ready when closed
+            if not self._is_index_ready():
+                break
+
         self.open_index()
+
+        # Wait for index to be ready after reopening
+        logger.debug("Waiting for index to be ready...")
+        for _ in range(60):
+            if self._is_index_ready():
+                break
+            time.sleep(1)
+
         self.refresh_index()
+        logger.debug("Indexing complete sequence finished")

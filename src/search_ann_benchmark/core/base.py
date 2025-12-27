@@ -1,11 +1,72 @@
 """Abstract base class for vector search engines."""
 
+import logging
+import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Generator
-import time
+from functools import wraps
+from typing import Any, Callable, Generator, TypeVar
 
 from search_ann_benchmark.config import DatasetConfig, EngineConfig
+from search_ann_benchmark.core.logging import get_logger
+
+logger = get_logger("base")
+
+T = TypeVar("T")
+
+
+def retry_with_backoff(
+    max_retries: int = 3,
+    initial_delay: float = 1.0,
+    backoff_factor: float = 2.0,
+    retryable_exceptions: tuple[type[Exception], ...] = (Exception,),
+) -> Callable[[Callable[..., T]], Callable[..., T]]:
+    """Decorator to retry a function with exponential backoff.
+
+    Args:
+        max_retries: Maximum number of retry attempts
+        initial_delay: Initial delay between retries in seconds
+        backoff_factor: Multiplier for delay on each retry
+        retryable_exceptions: Tuple of exception types that trigger retry
+
+    Returns:
+        Decorated function that retries on failure
+
+    Example:
+        @retry_with_backoff(max_retries=3, initial_delay=1.0)
+        def insert_batch(documents):
+            return requests.post(url, json=documents)
+    """
+    def decorator(func: Callable[..., T]) -> Callable[..., T]:
+        @wraps(func)
+        def wrapper(*args: Any, **kwargs: Any) -> T:
+            delay = initial_delay
+            last_exception: Exception | None = None
+
+            for attempt in range(max_retries + 1):
+                try:
+                    return func(*args, **kwargs)
+                except retryable_exceptions as e:
+                    last_exception = e
+                    if attempt < max_retries:
+                        logger.warning(
+                            f"Retry {attempt + 1}/{max_retries} for {func.__name__} "
+                            f"after {type(e).__name__}: {e}. Waiting {delay:.1f}s..."
+                        )
+                        time.sleep(delay)
+                        delay *= backoff_factor
+                    else:
+                        logger.error(
+                            f"All {max_retries} retries failed for {func.__name__}: {e}"
+                        )
+
+            # This should not be reached, but for type safety
+            if last_exception:
+                raise last_exception
+            raise RuntimeError("Unexpected state in retry_with_backoff")
+
+        return wrapper
+    return decorator
 
 
 @dataclass
@@ -138,15 +199,27 @@ class VectorSearchEngine(ABC):
             check_interval: Seconds between status checks
             stable_count: Number of consecutive stable checks required
         """
+        logger.debug(f"Waiting for indexing to complete (stable_count={stable_count}, interval={check_interval}s)")
+        start = time.time()
         count = 0
+        total_checks = 0
         while count < stable_count:
-            if self._is_indexing_complete():
+            total_checks += 1
+            is_complete = self._is_indexing_complete()
+            if is_complete:
                 count += 1
             else:
                 count = 0
-            print(".", end="", flush=True)
+            elapsed = time.time() - start
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(f"Indexing check {total_checks}: complete={is_complete}, stable_count={count}/{stable_count}, elapsed={elapsed:.1f}s")
+            else:
+                print(".", end="", flush=True)
             time.sleep(check_interval)
-        print(".")
+        elapsed = time.time() - start
+        if not logger.isEnabledFor(logging.DEBUG):
+            print(".")
+        logger.debug(f"Indexing complete after {total_checks} checks in {elapsed:.1f}s")
 
     def _is_indexing_complete(self) -> bool:
         """Check if indexing is complete.

@@ -1,5 +1,6 @@
 """Chroma vector search engine implementation."""
 
+import logging
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -8,6 +9,9 @@ import requests
 
 from search_ann_benchmark.config import DatasetConfig, EngineConfig
 from search_ann_benchmark.core.base import VectorSearchEngine, SearchResult
+from search_ann_benchmark.core.logging import get_logger
+
+logger = get_logger("engines.chroma")
 
 
 @dataclass
@@ -17,7 +21,7 @@ class ChromaConfig(EngineConfig):
     name: str = "chroma"
     host: str = "localhost"
     port: int = 8008
-    version: str = "0.5.7"
+    version: str = "1.4.0"
     container_name: str = "benchmark_chroma"
 
 
@@ -44,18 +48,25 @@ class ChromaEngine(VectorSearchEngine):
         ]
 
     def wait_until_ready(self, timeout: int = 60) -> bool:
-        print(f"Waiting for {self.engine_config.container_name}", end="")
-        for _ in range(timeout):
+        logger.info(f"Waiting for {self.engine_config.container_name}...")
+        start = time.time()
+        for attempt in range(timeout):
+            elapsed = time.time() - start
             try:
-                response = requests.get(f"{self.base_url}/api/v1/heartbeat", timeout=5)
+                logger.debug(f"Health check attempt {attempt+1}/{timeout}, elapsed={elapsed:.1f}s")
+                response = requests.get(f"{self.base_url}/api/v2/heartbeat", timeout=5)
                 if response.status_code == 200:
-                    print("[OK]")
+                    logger.info(f"Engine ready after {elapsed:.1f}s [OK]")
                     return True
-            except requests.exceptions.RequestException:
-                pass
-            print(".", end="", flush=True)
+                logger.debug(f"Health check response: status={response.status_code}")
+            except requests.exceptions.RequestException as e:
+                logger.debug(f"Health check failed: {type(e).__name__}: {e}")
+            if not logger.isEnabledFor(logging.DEBUG):
+                print(".", end="", flush=True)
             time.sleep(1)
-        print("[FAIL]")
+        if not logger.isEnabledFor(logging.DEBUG):
+            print("")
+        logger.error(f"Engine not ready after {timeout}s [FAIL]")
         return False
 
     def _get_client(self) -> Any:
@@ -115,20 +126,23 @@ class ChromaEngine(VectorSearchEngine):
         embeddings: list[list[float]],
         ids: list[int],
     ) -> float:
-        print(f"Sending {len(ids)} docs... ", end="")
+        logger.debug(f"Preparing insert request: {len(ids)} docs")
+
+        # Convert integer IDs to strings (Chroma requires string IDs)
+        str_ids = list(map(str, ids))
 
         start_time = time.time()
         try:
             self._get_collection().add(
                 embeddings=embeddings,
                 metadatas=documents,
-                ids=[str(i) for i in ids],
+                ids=str_ids,
             )
             elapsed = time.time() - start_time
-            print(f"[OK] {elapsed}")
+            logger.debug(f"Insert completed: {len(ids)} docs in {elapsed:.3f}s [OK]")
             return elapsed
         except Exception as e:
-            print(f"[FAIL] {e}")
+            logger.error(f"Insert failed: {e}")
             return 0
 
     def search(

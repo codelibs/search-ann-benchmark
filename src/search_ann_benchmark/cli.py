@@ -53,6 +53,12 @@ def main() -> None:
     is_flag=True,
     help="Skip filtered search benchmark",
 )
+@click.option(
+    "--debug",
+    is_flag=True,
+    default=False,
+    help="Enable debug logging with timestamps",
+)
 def run(
     engine: str,
     target: str,
@@ -61,13 +67,18 @@ def run(
     quantization: str | None,
     variant: str | None,
     no_filter: bool,
+    debug: bool,
 ) -> None:
     """Run benchmark for a vector search engine.
 
     ENGINE is the name of the engine to benchmark (e.g., qdrant, elasticsearch).
     """
+    from search_ann_benchmark.core.logging import setup_logging
     from search_ann_benchmark.engines import get_engine_class
     from search_ann_benchmark.runner import BenchmarkRunner
+
+    # Set up logging first
+    setup_logging(debug=debug)
 
     # Set environment variables
     if quantization:

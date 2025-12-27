@@ -2,9 +2,15 @@
 
 import io
 import json
+import logging
+import re
+import shutil
 import subprocess
+import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 from zipfile import ZipFile
 
@@ -12,6 +18,9 @@ import requests
 
 from search_ann_benchmark.config import DatasetConfig, EngineConfig
 from search_ann_benchmark.core.base import VectorSearchEngine, SearchResult
+from search_ann_benchmark.core.logging import get_logger
+
+logger = get_logger("engines.vespa")
 
 
 @dataclass
@@ -54,27 +63,35 @@ class VespaEngine(VectorSearchEngine):
         ]
 
     def wait_until_ready(self, timeout: int = 60) -> bool:
-        print(f"Waiting for {self.engine_config.container_name}", end="")
-        for _ in range(timeout):
+        logger.info(f"Waiting for {self.engine_config.container_name}...")
+        start = time.time()
+        for attempt in range(timeout):
+            elapsed = time.time() - start
             try:
+                logger.debug(f"Health check attempt {attempt+1}/{timeout}, elapsed={elapsed:.1f}s")
                 response = requests.get(f"{self.management_url}/state/v1/health", timeout=5)
                 if response.status_code == 200:
                     obj = response.json()
-                    if obj.get("status", {}).get("code") == "up":
-                        print("[OK]")
+                    status = obj.get("status", {}).get("code")
+                    logger.debug(f"Health check response: status={status}")
+                    if status == "up":
+                        logger.info(f"Engine ready after {elapsed:.1f}s [OK]")
                         return True
-            except requests.exceptions.RequestException:
-                pass
-            print(".", end="", flush=True)
+            except requests.exceptions.RequestException as e:
+                logger.debug(f"Health check failed: {type(e).__name__}: {e}")
+            if not logger.isEnabledFor(logging.DEBUG):
+                print(".", end="", flush=True)
             time.sleep(1)
-        print("[FAIL]")
+        if not logger.isEnabledFor(logging.DEBUG):
+            print("")
+        logger.error(f"Engine not ready after {timeout}s [FAIL]")
         return False
 
     def create_index(self) -> None:
         cfg = self.dataset_config
         vcfg = self.vespa_config
 
-        float_type = cfg.quantization if cfg.quantization else "float"
+        float_type = cfg.quantization if cfg.quantization and cfg.quantization != "none" else "float"
 
         service_xml = f"""<?xml version='1.0' encoding='UTF-8'?>
 <services version="1.0" xmlns:deploy="vespa" xmlns:preprocess="properties">
@@ -225,42 +242,146 @@ schema {cfg.index_name} {{
             return {"num_of_docs": count}
         return {}
 
+    def _check_error_counts(self, output: str) -> bool:
+        """Check if vespa feed output contains any errors."""
+        regex = r'"http\.response\.error\.count": (\d+)'
+        matches = re.findall(regex, output)
+        for count in [int(match) for match in matches]:
+            if count > 0:
+                return False
+        return True
+
+    def _has_vespa_cli(self) -> bool:
+        """Check if vespa CLI is available."""
+        return shutil.which("vespa") is not None
+
+    def _insert_with_vespa_cli(
+        self,
+        documents: list[dict[str, Any]],
+        embeddings: list[list[float]],
+        ids: list[int],
+    ) -> float:
+        """Insert documents using vespa feed CLI command."""
+        cfg = self.dataset_config
+
+        # Create JSONL file for vespa feed command
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
+            temp_path = Path(f.name)
+            for doc, embedding, doc_id in zip(documents, embeddings, ids):
+                feed_doc = {
+                    "put": f"id:{cfg.index_name}:{cfg.index_name}::{doc_id}",
+                    "fields": {
+                        **doc,
+                        "embedding": embedding,
+                    },
+                }
+                f.write(json.dumps(feed_doc))
+                f.write("\n")
+
+        try:
+            vespa_cmd = [
+                "vespa", "feed", str(temp_path),
+                "--target", self.base_url,
+            ]
+            start_time = time.time()
+            result = subprocess.run(vespa_cmd, capture_output=True, text=True)
+            elapsed = time.time() - start_time
+
+            if result.returncode == 0 and self._check_error_counts(result.stdout):
+                print(f"[OK] {elapsed:.2f}s")
+            else:
+                print(f"[FAIL] returncode={result.returncode}")
+                logger.debug(f"STDOUT: {result.stdout}")
+                logger.debug(f"STDERR: {result.stderr[:1000] if result.stderr else ''}")
+        finally:
+            temp_path.unlink(missing_ok=True)
+
+        return elapsed
+
+    def _insert_single_doc(
+        self,
+        session: requests.Session,
+        doc_url: str,
+        payload: dict[str, Any],
+    ) -> bool:
+        """Insert a single document via HTTP API."""
+        try:
+            response = session.post(
+                doc_url,
+                headers={"Content-Type": "application/json"},
+                data=json.dumps(payload),
+                timeout=30,
+            )
+            return response.status_code == 200
+        except requests.exceptions.RequestException:
+            return False
+
+    def _insert_with_http_parallel(
+        self,
+        documents: list[dict[str, Any]],
+        embeddings: list[list[float]],
+        ids: list[int],
+        max_workers: int = 32,
+    ) -> float:
+        """Insert documents using parallel HTTP requests.
+
+        Note: Vespa REST API only supports single-document operations.
+        For best performance, install vespa CLI: brew install vespa-cli
+        """
+        cfg = self.dataset_config
+
+        # Prepare requests
+        requests_data = []
+        for doc, embedding, doc_id in zip(documents, embeddings, ids):
+            doc_url = f"{self.base_url}/document/v1/{cfg.index_name}/{cfg.index_name}/docid/{doc_id}"
+            payload = {"fields": {**doc, "embedding": {"values": embedding}}}
+            requests_data.append((doc_url, payload))
+
+        start_time = time.time()
+        success_count = 0
+        fail_count = 0
+
+        # Use session for connection reuse
+        with requests.Session() as session:
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = {
+                    executor.submit(self._insert_single_doc, session, url, payload): (url, payload)
+                    for url, payload in requests_data
+                }
+                for future in as_completed(futures):
+                    if future.result():
+                        success_count += 1
+                    else:
+                        fail_count += 1
+
+        elapsed = time.time() - start_time
+
+        if fail_count == 0:
+            print(f"[OK] {elapsed:.2f}s")
+        else:
+            logger.warning(f"Partial bulk failure: {fail_count}/{len(ids)} docs failed")
+            print(f"[PARTIAL] {success_count}/{len(ids)} succeeded in {elapsed:.2f}s")
+
+        return elapsed
+
     def insert_documents(
         self,
         documents: list[dict[str, Any]],
         embeddings: list[list[float]],
         ids: list[int],
     ) -> float:
-        cfg = self.dataset_config
         print(f"Sending {len(ids)} docs... ", end="")
 
-        # Write to temp file for vespa feed command
-        docs = []
-        for doc, embedding, doc_id in zip(documents, embeddings, ids):
-            docs.append(json.dumps({
-                "put": f"id:{cfg.index_name}:{cfg.index_name}::{doc_id}",
-                "fields": {**doc, "embedding": embedding},
-            }))
-
-        with open("vespa_docs.jsonl", "w") as f:
-            for doc in docs:
-                f.write(doc)
-                f.write("\n")
-
-        start_time = time.time()
-        result = subprocess.run(
-            ["vespa", "feed", "vespa_docs.jsonl", "--target", f"http://{self.engine_config.host}:{self.engine_config.port}"],
-            capture_output=True,
-            text=True,
-        )
-        elapsed = time.time() - start_time
-
-        if result.returncode == 0:
-            print(f"[OK] {elapsed}")
-            return elapsed
+        # Prefer vespa CLI if available (much faster)
+        if self._has_vespa_cli():
+            return self._insert_with_vespa_cli(documents, embeddings, ids)
         else:
-            print(f"[FAIL] {result.returncode} {result.stderr[:500]}")
-            return 0
+            # Fallback to parallel HTTP requests
+            logger.warning(
+                "vespa CLI not found. Using parallel HTTP requests which is slower. "
+                "Install vespa-cli for better performance: brew install vespa-cli"
+            )
+            return self._insert_with_http_parallel(documents, embeddings, ids)
 
     def search(
         self,

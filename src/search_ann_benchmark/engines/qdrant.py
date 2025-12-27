@@ -1,6 +1,7 @@
 """Qdrant vector search engine implementation."""
 
 import json
+import logging
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -9,6 +10,9 @@ import requests
 
 from search_ann_benchmark.config import DatasetConfig, EngineConfig
 from search_ann_benchmark.core.base import VectorSearchEngine, SearchResult
+from search_ann_benchmark.core.logging import get_logger
+
+logger = get_logger("engines.qdrant")
 
 
 @dataclass
@@ -40,24 +44,32 @@ class QdrantEngine(VectorSearchEngine):
         ]
 
     def wait_until_ready(self, timeout: int = 60) -> bool:
-        print(f"Waiting for {self.engine_config.container_name}", end="")
-        for _ in range(timeout):
+        logger.info(f"Waiting for {self.engine_config.container_name}...")
+        start = time.time()
+        for attempt in range(timeout):
+            elapsed = time.time() - start
             try:
+                logger.debug(f"Health check attempt {attempt+1}/{timeout}, elapsed={elapsed:.1f}s")
                 response = requests.get(f"{self.base_url}/cluster", timeout=5)
                 if response.status_code == 200:
-                    print("[OK]")
+                    logger.info(f"Engine ready after {elapsed:.1f}s [OK]")
                     return True
-            except requests.exceptions.RequestException:
-                pass
-            print(".", end="", flush=True)
+                logger.debug(f"Health check response: status={response.status_code}")
+            except requests.exceptions.RequestException as e:
+                logger.debug(f"Health check failed: {type(e).__name__}: {e}")
+            if not logger.isEnabledFor(logging.DEBUG):
+                print(".", end="", flush=True)
             time.sleep(1)
-        print("[FAIL]")
+        if not logger.isEnabledFor(logging.DEBUG):
+            print("")
+        logger.error(f"Engine not ready after {timeout}s [FAIL]")
         return False
 
     def create_index(self) -> None:
         cfg = self.dataset_config
         print(f"Creating Collection {cfg.index_name} with {cfg.quantization}... ", end="")
 
+        # HNSW config is set at vectors level only (not duplicated at top level)
         schema: dict[str, Any] = {
             "vectors": {
                 "size": cfg.dimension,
@@ -66,10 +78,6 @@ class QdrantEngine(VectorSearchEngine):
                     "m": cfg.hnsw_m,
                     "ef_construct": cfg.hnsw_ef_construction,
                 },
-            },
-            "hnsw_config": {
-                "m": cfg.hnsw_m,
-                "ef_construct": cfg.hnsw_ef_construction,
             },
         }
 
@@ -94,29 +102,38 @@ class QdrantEngine(VectorSearchEngine):
             print(f"[FAIL]\n{response.text}")
             return
 
-        # Create payload indices
+        # Create payload indices for filtering
+        self._create_payload_indices(cfg.index_name)
+
+    def _create_payload_indices(self, collection_name: str) -> None:
+        """Create payload indices for filtering and search."""
+        # Integer indices
         for field_name in ["page_id", "rev_id"]:
-            print(f"Creating Payload integer:{field_name}... ", end="")
+            logger.debug(f"Creating payload index: integer:{field_name}")
             response = requests.put(
-                f"{self.base_url}/collections/{cfg.index_name}/index",
+                f"{self.base_url}/collections/{collection_name}/index",
                 headers={"Content-Type": "application/json"},
                 json={"field_name": field_name, "field_schema": "integer"},
             )
-            print("[OK]" if response.status_code == 200 else f"[FAIL]\n{response.text}")
+            if response.status_code != 200:
+                logger.warning(f"Failed to create index for {field_name}: {response.text}")
 
+        # Keyword indices
         for field_name in ["section"]:
-            print(f"Creating Payload keyword:{field_name}... ", end="")
+            logger.debug(f"Creating payload index: keyword:{field_name}")
             response = requests.put(
-                f"{self.base_url}/collections/{cfg.index_name}/index",
+                f"{self.base_url}/collections/{collection_name}/index",
                 headers={"Content-Type": "application/json"},
                 json={"field_name": field_name, "field_schema": "keyword"},
             )
-            print("[OK]" if response.status_code == 200 else f"[FAIL]\n{response.text}")
+            if response.status_code != 200:
+                logger.warning(f"Failed to create index for {field_name}: {response.text}")
 
+        # Text indices for full-text search
         for field_name in ["title", "text"]:
-            print(f"Creating Payload text:{field_name}... ", end="")
+            logger.debug(f"Creating payload index: text:{field_name}")
             response = requests.put(
-                f"{self.base_url}/collections/{cfg.index_name}/index",
+                f"{self.base_url}/collections/{collection_name}/index",
                 headers={"Content-Type": "application/json"},
                 json={
                     "field_name": field_name,
@@ -124,12 +141,13 @@ class QdrantEngine(VectorSearchEngine):
                         "type": "text",
                         "tokenizer": "word",
                         "min_token_len": 2,
-                        "max_token_len": 2,
+                        "max_token_len": 40,  # Reasonable max token length for words
                         "lowercase": True,
                     },
                 },
             )
-            print("[OK]" if response.status_code == 200 else f"[FAIL]\n{response.text}")
+            if response.status_code != 200:
+                logger.warning(f"Failed to create index for {field_name}: {response.text}")
 
     def delete_index(self) -> None:
         cfg = self.dataset_config
