@@ -54,7 +54,7 @@ class ChromaEngine(VectorSearchEngine):
             elapsed = time.time() - start
             try:
                 logger.debug(f"Health check attempt {attempt+1}/{timeout}, elapsed={elapsed:.1f}s")
-                response = requests.get(f"{self.base_url}/api/v1/heartbeat", timeout=5)
+                response = requests.get(f"{self.base_url}/api/v2/heartbeat", timeout=5)
                 if response.status_code == 200:
                     logger.info(f"Engine ready after {elapsed:.1f}s [OK]")
                     return True
