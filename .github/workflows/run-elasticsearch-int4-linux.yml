@@ -1,56 +1,76 @@
-name: Run Elasticsearch (int4) on Linux
+name: Run Elasticsearch (int4) benchmark on Linux
 
 on:
   push:
     branches:
-    - main
+      - main
     paths:
-    - run-elasticsearch.ipynb
+      - 'src/search_ann_benchmark/engines/elasticsearch.py'
+      - '.github/workflows/run-elasticsearch-int4-linux.yml'
   pull_request:
     branches:
-    - main
+      - main
   workflow_dispatch:
+    inputs:
+      target_config:
+        description: 'Target configuration'
+        required: false
+        default: '100k-768-m32-efc200-ef100-ip'
+        type: choice
+        options:
+          - 100k-768-m32-efc200-ef100-ip
+          - 1m-768-m48-efc200-ef100-ip
+          - 5m-768-m48-efc200-ef100-ip
+
+env:
+  ENGINE_NAME: elasticsearch
+  ENGINE_VERSION: "8.17.4"
 
 jobs:
-  build:
-
+  benchmark:
     runs-on: ubuntu-latest
+    timeout-minutes: 360
 
     steps:
-    - uses: actions/checkout@v4
-    - name: Check Hardware Spec
-      run: /bin/bash ./scripts/get_hardware_info.sh
-    - name: Cache dataset
-      uses: actions/cache@v4
-      with:
-        path: |
-          dataset
-        key: ${{ runner.os }}-dataset
-    - name: Download data
-      run: /bin/bash ./scripts/setup.sh gha
-    - name: Set up Python 3.10
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.10'
-    - name: Cache pip modules
-      uses: actions/cache@v4
-      with:
-        path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
-        restore-keys: |
-          ${{ runner.os }}-pip-
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-    - name: Run ANN search
-      run: papermill run-elasticsearch.ipynb output-elasticsearch-linux.ipynb --log-output
-      env:
-        PRODUCT_VARIANT: "int4"
-        SETTING_QUANTIZATION: "int4"
-    - name: 'Upload Results'
-      uses: actions/upload-artifact@v4
-      with:
-        name: elasticsearch-int4-results
-        path: results.json
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
+      - name: Report Hardware
+        run: bash scripts/get_hardware_info.sh
+
+      - name: Cache dataset
+        uses: actions/cache@v4
+        with:
+          path: dataset
+          key: ${{ runner.os }}-dataset-gha-v1
+
+      - name: Download dataset
+        run: bash scripts/setup.sh gha
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run benchmark
+        env:
+          TARGET_CONFIG: ${{ github.event.inputs.target_config || '100k-768-m32-efc200-ef100-ip' }}
+          PRODUCT_VARIANT: "int4"
+        run: |
+          uv run search-ann-benchmark run ${ENGINE_NAME} \
+            --target ${TARGET_CONFIG} \
+            --version ${ENGINE_VERSION} \
+            --quantization int4 \
+            --variant int4
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: elasticsearch-int4-results
+          path: results.json
