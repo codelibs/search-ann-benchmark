@@ -22,7 +22,7 @@ class QdrantConfig(EngineConfig):
     name: str = "qdrant"
     host: str = "localhost"
     port: int = 6344
-    version: str = "1.13.6"
+    version: str = "1.16.2"
     container_name: str = "benchmark_qdrant"
 
 

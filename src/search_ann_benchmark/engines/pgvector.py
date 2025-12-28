@@ -19,7 +19,7 @@ class PgvectorConfig(EngineConfig):
     name: str = "pgvector"
     host: str = "localhost"
     port: int = 5433
-    version: str = "0.8.0-pg17"
+    version: str = "0.8.1-pg17"
     container_name: str = "benchmark_pgvector"
     password: str = "ann!test123"
     dbname: str = "vectordb"

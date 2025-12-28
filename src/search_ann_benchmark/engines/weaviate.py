@@ -22,7 +22,7 @@ class WeaviateConfig(EngineConfig):
     name: str = "weaviate"
     host: str = "localhost"
     port: int = 8091
-    version: str = "1.28.2"
+    version: str = "1.35.1"
     container_name: str = "benchmark_weaviate"
 
 
