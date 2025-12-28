@@ -22,7 +22,7 @@ class ElasticsearchConfig(EngineConfig):
     name: str = "elasticsearch"
     host: str = "localhost"
     port: int = 9211
-    version: str = "8.17.4"
+    version: str = "8.17.8"
     container_name: str = "benchmark_es"
     heap: str = "2g"
 
