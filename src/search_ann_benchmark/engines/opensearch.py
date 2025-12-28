@@ -23,7 +23,7 @@ class OpenSearchConfig(EngineConfig):
     name: str = "opensearch"
     host: str = "localhost"
     port: int = 9212
-    version: str = "2.19.4"
+    version: str = "3.4.0"
     container_name: str = "benchmark_opensearch"
     heap: str = "2g"
     engine: str = "lucene"  # or "faiss"
@@ -135,7 +135,6 @@ class OpenSearchEngine(VectorSearchEngine):
                         "number_of_shards": number_of_shards,
                         "number_of_replicas": number_of_replicas,
                         "knn": True,
-                        "knn.algo_param.ef_search": cfg.hnsw_ef,
                     },
                 },
             },
@@ -267,17 +266,23 @@ class OpenSearchEngine(VectorSearchEngine):
     ) -> SearchResult:
         cfg = self.dataset_config
 
-        query: dict[str, Any] = {
-            "knn": {
-                "embedding": {
-                    "vector": query_vector,
-                    "k": top_k,
-                }
-            }
+        knn_params: dict[str, Any] = {
+            "vector": query_vector,
+            "k": top_k,
         }
 
+        # Add ef_search for FAISS engine (Lucene ignores this and dynamically uses k)
+        if self.os_config.engine == "faiss":
+            knn_params["method_parameters"] = {"ef_search": cfg.hnsw_ef}
+
         if filter_query:
-            query["knn"]["embedding"]["filter"] = filter_query
+            knn_params["filter"] = filter_query
+
+        query: dict[str, Any] = {
+            "knn": {
+                "embedding": knn_params
+            }
+        }
 
         query_dsl = {
             "query": query,
