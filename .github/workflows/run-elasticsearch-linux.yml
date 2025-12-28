@@ -34,7 +34,7 @@ on:
 
 env:
   ENGINE_NAME: elasticsearch
-  ENGINE_VERSION: "8.17.4"
+  ENGINE_VERSION: "9.2.3"
 
 jobs:
   benchmark:
