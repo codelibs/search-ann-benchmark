@@ -31,11 +31,15 @@ chroma = [
 milvus = [
     "pymilvus>=2.4.4",
 ]
+lancedb = [
+    "lancedb>=0.20.0",
+]
 all = [
     "psycopg>=3.1.19",
     "pgvector>=0.3.0",
     "chromadb>=1.4.0",
     "pymilvus>=2.4.4",
+    "lancedb>=0.20.0",
 ]
 
 [project.scripts]
