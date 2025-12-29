@@ -17,7 +17,7 @@ logger = get_logger("engines.lancedb")
 
 
 @dataclass
-class LanceDBConfig(EngineConfig):
+class LancedbConfig(EngineConfig):
     """LanceDB-specific configuration."""
 
     name: str = "lancedb"
@@ -37,18 +37,18 @@ class LanceDBEngine(VectorSearchEngine):
 
     engine_name = "lancedb"
 
-    def __init__(self, dataset_config: DatasetConfig, engine_config: LanceDBConfig | None = None):
-        engine_config = engine_config or LanceDBConfig()
+    def __init__(self, dataset_config: DatasetConfig, engine_config: LancedbConfig | None = None):
+        engine_config = engine_config or LancedbConfig()
         super().__init__(dataset_config, engine_config)
         self._db = None
         self._table = None
 
     @property
-    def engine_config(self) -> LanceDBConfig:
+    def engine_config(self) -> LancedbConfig:
         return self._engine_config
 
     @engine_config.setter
-    def engine_config(self, value: LanceDBConfig) -> None:
+    def engine_config(self, value: LancedbConfig) -> None:
         self._engine_config = value
 
     def _get_db(self) -> Any:
