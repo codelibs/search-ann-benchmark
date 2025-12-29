@@ -12,14 +12,14 @@ This benchmarking suite aims to provide an empirical basis for comparing the per
 
 | Engine | Version | GitHub Actions |
 |--------|---------|----------------|
-| Qdrant | 1.13.6 | [![Run Qdrant](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-qdrant-linux.yml/badge.svg)](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-qdrant-linux.yml) |
-| Elasticsearch | 8.17.4 | [![Run Elasticsearch](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-elasticsearch-linux.yml/badge.svg)](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-elasticsearch-linux.yml) |
-| OpenSearch | 2.19.1 | [![Run OpenSearch](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-opensearch-linux.yml/badge.svg)](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-opensearch-linux.yml) |
+| Qdrant | 1.16.2 | [![Run Qdrant](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-qdrant-linux.yml/badge.svg)](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-qdrant-linux.yml) |
+| Elasticsearch | 9.2.3 | [![Run Elasticsearch](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-elasticsearch-linux.yml/badge.svg)](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-elasticsearch-linux.yml) |
+| OpenSearch | 3.4.0 | [![Run OpenSearch](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-opensearch-linux.yml/badge.svg)](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-opensearch-linux.yml) |
 | Milvus | 2.6.7 | [![Run Milvus](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-milvus-linux.yml/badge.svg)](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-milvus-linux.yml) |
 | Weaviate | 1.35.2 | [![Run Weaviate](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-weaviate-linux.yml/badge.svg)](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-weaviate-linux.yml) |
 | Vespa | 8.620.35 | [![Run Vespa](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-vespa-linux.yml/badge.svg)](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-vespa-linux.yml) |
 | pgvector | 0.8.1-pg17 | [![Run pgvector](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-pgvector-linux.yml/badge.svg)](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-pgvector-linux.yml) |
-| Chroma | 0.5.7 | [![Run Chroma](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-chroma-linux.yml/badge.svg)](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-chroma-linux.yml) |
+| Chroma | 1.4.0 | [![Run Chroma](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-chroma-linux.yml/badge.svg)](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-chroma-linux.yml) |
 
 ## Prerequisites
 
