@@ -8,7 +8,7 @@ from .weaviate import WeaviateEngine, WeaviateConfig
 from .vespa import VespaEngine, VespaConfig
 from .pgvector import PgvectorEngine, PgvectorConfig
 from .chroma import ChromaEngine, ChromaConfig
-from .clickhouse import ClickHouseEngine, ClickHouseConfig
+from .clickhouse import ClickHouseEngine, ClickHouseConfig, ClickhouseConfig
 
 ENGINE_REGISTRY: dict[str, type] = {
     "qdrant": QdrantEngine,
@@ -59,6 +59,7 @@ __all__ = [
     "ChromaConfig",
     "ClickHouseEngine",
     "ClickHouseConfig",
+    "ClickhouseConfig",
     "ENGINE_REGISTRY",
     "get_engine_class",
 ]

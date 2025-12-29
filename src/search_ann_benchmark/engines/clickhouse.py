@@ -290,16 +290,10 @@ class ClickHouseEngine(VectorSearchEngine):
             section = filter_query["section"].replace("'", "\\'")
             where_clause = f"WHERE section = '{section}'"
 
-        # For inner product (dot_product), we use negative distance for ORDER BY
-        # since ClickHouse returns distance (smaller is better)
-        # For cosineDistance, smaller is also better (0 = identical)
-        if cfg.distance == "dot_product":
-            # Use negative inner product for distance (higher dot product = lower distance)
-            distance_expr = f"1 - dotProduct(embedding, {vector_str})"
-            order_direction = "ASC"
-        else:
-            distance_expr = f"{distance_function}(embedding, {vector_str})"
-            order_direction = "ASC"
+        # Use the same distance function as the index for efficient ANN search
+        # For dot_product with normalized vectors, cosineDistance gives equivalent ranking
+        # cosineDistance = 1 - cosine_similarity = 1 - dot_product (for unit vectors)
+        distance_expr = f"{distance_function}(embedding, {vector_str})"
 
         query = f"""
             SELECT
@@ -307,7 +301,7 @@ class ClickHouseEngine(VectorSearchEngine):
                 {distance_expr} AS distance
             FROM {cfg.index_name}
             {where_clause}
-            ORDER BY distance {order_direction}
+            ORDER BY distance ASC
             LIMIT {top_k}
             SETTINGS
                 hnsw_candidate_list_size_for_search = {cfg.hnsw_ef}
@@ -320,11 +314,10 @@ class ClickHouseEngine(VectorSearchEngine):
 
             data = result.get("data", [])
             ids = [int(row.get("doc_id", 0)) for row in data]
-            # Convert distance back to score (for dot product, negate the distance)
-            if cfg.distance == "dot_product":
-                scores = [1 - float(row.get("distance", 0)) for row in data]
-            else:
-                scores = [-float(row.get("distance", 0)) for row in data]
+            # Convert distance to score (negate distance so higher is better)
+            # For cosineDistance: 0 = identical, 2 = opposite
+            # Score = -distance (or 1 - distance for normalized range)
+            scores = [-float(row.get("distance", 0)) for row in data]
 
             return SearchResult(
                 query_id=0,
@@ -343,9 +336,13 @@ class ClickHouseEngine(VectorSearchEngine):
     def normalize_distance(self, distance: str) -> str:
         """Convert distance metric name to ClickHouse format."""
         mapping = {
-            "dot_product": "cosineDistance",  # For HNSW index, use cosine; we handle dot product in search
+            "dot_product": "cosineDistance",  # For HNSW index, use cosine; equivalent for normalized vectors
             "cosine": "cosineDistance",
             "l2": "L2Distance",
             "euclidean": "L2Distance",
         }
         return mapping.get(distance, distance)
+
+
+# Alias for CLI compatibility (cli.py uses engine.capitalize() + "Config")
+ClickhouseConfig = ClickHouseConfig
