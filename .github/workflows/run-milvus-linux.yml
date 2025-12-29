@@ -24,7 +24,7 @@ on:
 
 env:
   ENGINE_NAME: milvus
-  ENGINE_VERSION: "2.5.4"
+  ENGINE_VERSION: "2.6.7"
 
 jobs:
   benchmark:
