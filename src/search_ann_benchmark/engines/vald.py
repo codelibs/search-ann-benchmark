@@ -21,7 +21,7 @@ class ValdConfig(EngineConfig):
     name: str = "vald"
     host: str = "localhost"
     port: int = 8081
-    version: str = "1.7.13"
+    version: str = "v1.7.16"
     container_name: str = "benchmark_vald"
     # NGT-specific parameters
     creation_edge_size: int = 20
@@ -46,7 +46,8 @@ class ValdEngine(VectorSearchEngine):
         self._insert_stub = None
         self._search_stub = None
         self._remove_stub = None
-        self._index_stub = None
+        self._agent_stub = None  # For CreateIndex (Agent service)
+        self._info_stub = None   # For IndexInfo (Index service)
         self._config_dir: Path | None = None
 
     @property
@@ -126,7 +127,7 @@ ngt:
         """Set up gRPC channel and stubs."""
         import grpc
         from vald.v1.agent.core import agent_pb2_grpc
-        from vald.v1.vald import insert_pb2_grpc, remove_pb2_grpc, search_pb2_grpc
+        from vald.v1.vald import index_pb2_grpc, insert_pb2_grpc, remove_pb2_grpc, search_pb2_grpc
 
         if self._channel is None:
             self._channel = grpc.insecure_channel(
@@ -135,7 +136,8 @@ ngt:
             self._insert_stub = insert_pb2_grpc.InsertStub(self._channel)
             self._search_stub = search_pb2_grpc.SearchStub(self._channel)
             self._remove_stub = remove_pb2_grpc.RemoveStub(self._channel)
-            self._index_stub = agent_pb2_grpc.AgentStub(self._channel)
+            self._agent_stub = agent_pb2_grpc.AgentStub(self._channel)  # CreateIndex
+            self._info_stub = index_pb2_grpc.IndexStub(self._channel)   # IndexInfo
 
     def _close_grpc(self) -> None:
         """Close gRPC channel."""
@@ -145,7 +147,8 @@ ngt:
             self._insert_stub = None
             self._search_stub = None
             self._remove_stub = None
-            self._index_stub = None
+            self._agent_stub = None
+            self._info_stub = None
 
     def get_docker_command(self) -> list[str]:
         # Create temp directory for config
@@ -223,7 +226,7 @@ ngt:
             self._setup_grpc()
             from vald.v1.payload import payload_pb2
 
-            response = self._index_stub.IndexInfo(payload_pb2.Empty())
+            response = self._info_stub.IndexInfo(payload_pb2.Empty())
             return {
                 "num_of_docs": response.stored,
                 "uncommitted": response.uncommitted,
@@ -330,7 +333,7 @@ ngt:
             control_request = payload_pb2.Control.CreateIndexRequest(
                 pool_size=10000,
             )
-            self._index_stub.CreateIndex(control_request)
+            self._agent_stub.CreateIndex(control_request)
             print("[OK]")
         except Exception as e:
             print(f"[WARN] {e}")
@@ -348,7 +351,7 @@ ngt:
         while count < stable_count:
             total_checks += 1
             try:
-                response = self._index_stub.IndexInfo(payload_pb2.Empty())
+                response = self._info_stub.IndexInfo(payload_pb2.Empty())
                 stored = response.stored
                 uncommitted = response.uncommitted
 
@@ -385,7 +388,7 @@ ngt:
             from vald.v1.payload import payload_pb2
 
             self._setup_grpc()
-            response = self._index_stub.IndexInfo(payload_pb2.Empty())
+            response = self._info_stub.IndexInfo(payload_pb2.Empty())
             return response.uncommitted == 0
         except Exception:
             return False

@@ -19,7 +19,7 @@ class RedisStackConfig(EngineConfig):
     name: str = "redisstack"
     host: str = "localhost"
     port: int = 6379
-    version: str = "7.4.2-v2"
+    version: str = "7.4.0-v8"
     container_name: str = "benchmark_redisstack"
 
 

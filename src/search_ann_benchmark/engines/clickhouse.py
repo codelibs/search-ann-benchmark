@@ -68,6 +68,7 @@ class ClickHouseEngine(VectorSearchEngine):
             "-p", f"{cfg.port}:8123",
             "-p", "9000:9000",
             "--ulimit", "nofile=262144:262144",
+            "-e", "CLICKHOUSE_SKIP_USER_SETUP=1",
             f"clickhouse/clickhouse-server:{cfg.version}",
         ]
 
