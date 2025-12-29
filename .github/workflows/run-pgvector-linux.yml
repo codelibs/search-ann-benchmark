@@ -32,7 +32,7 @@ on:
 
 env:
   ENGINE_NAME: pgvector
-  ENGINE_VERSION: "0.8.0-pg17"
+  ENGINE_VERSION: "0.8.1-pg17"
 
 jobs:
   benchmark:
