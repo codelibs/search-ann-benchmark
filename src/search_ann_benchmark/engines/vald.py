@@ -21,7 +21,7 @@ class ValdConfig(EngineConfig):
     name: str = "vald"
     host: str = "localhost"
     port: int = 8081
-    version: str = "v1.7.16"
+    version: str = "v1.7.17"
     container_name: str = "benchmark_vald"
     # NGT-specific parameters
     creation_edge_size: int = 20
