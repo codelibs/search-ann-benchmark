@@ -31,6 +31,9 @@ chroma = [
 milvus = [
     "pymilvus>=2.4.4",
 ]
+lancedb = [
+    "lancedb>=0.20.0",
+]
 redisstack = [
     "redis>=5.0.0",
 ]
@@ -43,6 +46,7 @@ all = [
     "pgvector>=0.3.0",
     "chromadb>=1.4.0",
     "pymilvus>=2.4.4",
+    "lancedb>=0.20.0",
     "redis>=5.0.0",
     "vald-client-python>=1.7.13",
     "grpcio>=1.60.0",

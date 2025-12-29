@@ -3,6 +3,7 @@
 from .chroma import ChromaConfig, ChromaEngine
 from .clickhouse import ClickHouseConfig, ClickHouseEngine, ClickhouseConfig
 from .elasticsearch import ElasticsearchConfig, ElasticsearchEngine
+from .lancedb import LanceDBEngine, LancedbConfig
 from .milvus import MilvusConfig, MilvusEngine
 from .opensearch import OpenSearchConfig, OpenSearchEngine
 from .pgvector import PgvectorConfig, PgvectorEngine
@@ -22,6 +23,7 @@ ENGINE_REGISTRY: dict[str, type] = {
     "pgvector": PgvectorEngine,
     "chroma": ChromaEngine,
     "clickhouse": ClickHouseEngine,
+    "lancedb": LanceDBEngine,
     "redisstack": RedisStackEngine,
     "vald": ValdEngine,
 }
@@ -64,6 +66,8 @@ __all__ = [
     "ClickHouseEngine",
     "ClickHouseConfig",
     "ClickhouseConfig",
+    "LanceDBEngine",
+    "LancedbConfig",
     "RedisStackEngine",
     "RedisStackConfig",
     "ValdEngine",

@@ -19,6 +19,9 @@ class TestEngineRegistry:
             "vespa",
             "pgvector",
             "chroma",
+            "clickhouse",
+            "lancedb",
+            "redisstack",
             "vald",
         ]
         for engine in expected_engines:
