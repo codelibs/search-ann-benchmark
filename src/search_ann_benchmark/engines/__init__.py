@@ -8,6 +8,7 @@ from .opensearch import OpenSearchConfig, OpenSearchEngine
 from .pgvector import PgvectorConfig, PgvectorEngine
 from .qdrant import QdrantConfig, QdrantEngine
 from .redisstack import RedisStackConfig, RedisStackEngine
+from .vald import ValdConfig, ValdEngine
 from .vespa import VespaConfig, VespaEngine
 from .weaviate import WeaviateConfig, WeaviateEngine
 
@@ -22,6 +23,7 @@ ENGINE_REGISTRY: dict[str, type] = {
     "chroma": ChromaEngine,
     "clickhouse": ClickHouseEngine,
     "redisstack": RedisStackEngine,
+    "vald": ValdEngine,
 }
 
 
@@ -64,6 +66,8 @@ __all__ = [
     "ClickhouseConfig",
     "RedisStackEngine",
     "RedisStackConfig",
+    "ValdEngine",
+    "ValdConfig",
     "ENGINE_REGISTRY",
     "get_engine_class",
 ]

@@ -1,0 +1,72 @@
+name: Run Vald benchmark on Linux
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/search_ann_benchmark/engines/vald.py'
+      - '.github/workflows/run-vald-linux.yml'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      target_config:
+        description: 'Target configuration'
+        required: false
+        default: '100k-768-m32-efc200-ef100-ip'
+        type: choice
+        options:
+          - 100k-768-m32-efc200-ef100-ip
+          - 1m-768-m48-efc200-ef100-ip
+          - 5m-768-m48-efc200-ef100-ip
+
+env:
+  ENGINE_NAME: vald
+  ENGINE_VERSION: "1.7.13"
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Report Hardware
+        run: bash scripts/get_hardware_info.sh
+
+      - name: Cache dataset
+        uses: actions/cache@v4
+        with:
+          path: dataset
+          key: ${{ runner.os }}-dataset-gha-v1
+
+      - name: Download dataset
+        run: bash scripts/setup.sh gha
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        run: uv sync --extra vald
+
+      - name: Run benchmark
+        env:
+          TARGET_CONFIG: ${{ github.event.inputs.target_config || '100k-768-m32-efc200-ef100-ip' }}
+        run: |
+          ARGS="--target ${TARGET_CONFIG} --version ${ENGINE_VERSION} --no-filter"
+          uv run search-ann-benchmark run ${ENGINE_NAME} ${ARGS}
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: vald-results
+          path: results.json
