@@ -5,11 +5,26 @@ on:
     branches:
       - main
     paths:
+      - 'src/search_ann_benchmark/__init__.py'
+      - 'src/search_ann_benchmark/cli.py'
+      - 'src/search_ann_benchmark/config.py'
+      - 'src/search_ann_benchmark/runner.py'
+      - 'src/search_ann_benchmark/core/**'
+      - 'src/search_ann_benchmark/engines/__init__.py'
       - 'src/search_ann_benchmark/engines/qdrant.py'
       - '.github/workflows/run-qdrant-linux.yml'
   pull_request:
     branches:
       - main
+    paths:
+      - 'src/search_ann_benchmark/__init__.py'
+      - 'src/search_ann_benchmark/cli.py'
+      - 'src/search_ann_benchmark/config.py'
+      - 'src/search_ann_benchmark/runner.py'
+      - 'src/search_ann_benchmark/core/**'
+      - 'src/search_ann_benchmark/engines/__init__.py'
+      - 'src/search_ann_benchmark/engines/qdrant.py'
+      - '.github/workflows/run-qdrant-linux.yml'
   workflow_dispatch:
     inputs:
       target_config:
