@@ -28,7 +28,7 @@ env:
 
 jobs:
   benchmark:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # Use newer runner with AVX2 support for NGT SIMD instructions
     timeout-minutes: 360
 
     steps:

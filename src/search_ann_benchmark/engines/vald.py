@@ -1,6 +1,8 @@
 """Vald vector search engine implementation."""
 
 import logging
+import platform
+import subprocess
 import tempfile
 import time
 from dataclasses import dataclass
@@ -54,6 +56,19 @@ class ValdEngine(VectorSearchEngine):
     def vald_config(self) -> ValdConfig:
         """Get Vald-specific config."""
         return self.engine_config  # type: ignore
+
+    @staticmethod
+    def is_platform_supported() -> bool:
+        """Check if current platform supports Vald.
+
+        Vald uses NGT which requires SIMD instructions (AVX/SSE) that are not
+        available on ARM64 architectures like Apple Silicon.
+
+        Returns:
+            True if platform is supported, False otherwise.
+        """
+        machine = platform.machine().lower()
+        return machine not in ("arm64", "aarch64")
 
     def _get_config_yaml(self) -> str:
         """Generate Vald agent configuration YAML."""
@@ -151,10 +166,18 @@ ngt:
             self._info_stub = None
 
     def get_docker_command(self) -> list[str]:
+        import os
+
         # Create temp directory for config
         self._config_dir = Path(tempfile.mkdtemp(prefix="vald_config_"))
+        # Make directory world-readable for Docker container access
+        os.chmod(self._config_dir, 0o755)
+
         config_path = self._config_dir / "config.yaml"
         config_path.write_text(self._get_config_yaml())
+        # Make config file world-readable for Docker container access
+        os.chmod(config_path, 0o644)
+
         logger.debug(f"Created Vald config at {config_path}")
 
         return [
@@ -174,6 +197,15 @@ ngt:
 
     def wait_until_ready(self, timeout: int = 60) -> bool:
         import requests
+
+        # Check platform support first
+        if not self.is_platform_supported():
+            logger.error(
+                f"Vald is not supported on {platform.machine()} architecture. "
+                "NGT requires x86_64 with AVX/SSE support. "
+                "Apple Silicon and other ARM64 platforms are not supported."
+            )
+            return False
 
         logger.info(f"Waiting for {self.vald_config.container_name}...")
         start = time.time()
@@ -196,8 +228,49 @@ ngt:
             time.sleep(1)
         if not logger.isEnabledFor(logging.DEBUG):
             print("")
+
+        # Check if container crashed
+        self._check_container_status()
+
         logger.error(f"Engine not ready after {timeout}s [FAIL]")
         return False
+
+    def _check_container_status(self) -> None:
+        """Check container status and log crash information if applicable."""
+        try:
+            result = subprocess.run(
+                ["docker", "inspect", "-f", "{{.State.Status}}", self.vald_config.container_name],
+                capture_output=True,
+                text=True,
+            )
+            status = result.stdout.strip()
+
+            if status == "exited":
+                exit_result = subprocess.run(
+                    ["docker", "inspect", "-f", "{{.State.ExitCode}}", self.vald_config.container_name],
+                    capture_output=True,
+                    text=True,
+                )
+                exit_code = exit_result.stdout.strip()
+
+                logs_result = subprocess.run(
+                    ["docker", "logs", "--tail", "30", self.vald_config.container_name],
+                    capture_output=True,
+                    text=True,
+                )
+                last_logs = logs_result.stderr or logs_result.stdout
+
+                logger.error(f"Container crashed with exit code {exit_code}")
+                if "SIGILL" in last_logs or "illegal instruction" in last_logs:
+                    logger.error(
+                        "SIGILL detected: This CPU may not support the SIMD instructions "
+                        "(AVX/SSE) required by NGT. Consider using a different runner or platform."
+                    )
+                logger.error(f"Last container logs:\n{last_logs}")
+            elif status:
+                logger.debug(f"Container status: {status}")
+        except Exception as e:
+            logger.debug(f"Failed to check container status: {e}")
 
     def create_index(self) -> None:
         """Initialize gRPC connection. Vald creates index automatically."""
