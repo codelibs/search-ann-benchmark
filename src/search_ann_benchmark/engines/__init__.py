@@ -1,6 +1,7 @@
 """Vector search engine implementations."""
 
 from .chroma import ChromaConfig, ChromaEngine
+from .clickhouse import ClickHouseConfig, ClickHouseEngine, ClickhouseConfig
 from .elasticsearch import ElasticsearchConfig, ElasticsearchEngine
 from .milvus import MilvusConfig, MilvusEngine
 from .opensearch import OpenSearchConfig, OpenSearchEngine
@@ -19,6 +20,7 @@ ENGINE_REGISTRY: dict[str, type] = {
     "vespa": VespaEngine,
     "pgvector": PgvectorEngine,
     "chroma": ChromaEngine,
+    "clickhouse": ClickHouseEngine,
     "redisstack": RedisStackEngine,
 }
 
@@ -57,6 +59,9 @@ __all__ = [
     "PgvectorConfig",
     "ChromaEngine",
     "ChromaConfig",
+    "ClickHouseEngine",
+    "ClickHouseConfig",
+    "ClickhouseConfig",
     "RedisStackEngine",
     "RedisStackConfig",
     "ENGINE_REGISTRY",
