@@ -66,17 +66,23 @@ class ValdEngine(VectorSearchEngine):
 version: v0.0.0
 time_zone: UTC
 logging:
+  logger: glg
   level: info
+  format: raw
 server_config:
   servers:
-    - name: grpc
+    - name: agent-grpc
       host: 0.0.0.0
       port: 8081
       mode: GRPC
       probe_wait_time: 3s
-      grpc:
-        max_recv_msg_size: 0
-        max_send_msg_size: 0
+      http:
+        shutdown_duration: 5s
+        handler_timeout: ""
+        idle_timeout: ""
+        read_header_timeout: ""
+        read_timeout: ""
+        write_timeout: ""
   health_check_servers:
     - name: liveness
       host: 0.0.0.0
@@ -92,13 +98,15 @@ server_config:
         write_timeout: ""
   startup_strategy:
     - liveness
-    - grpc
+    - agent-grpc
   shutdown_strategy:
-    - grpc
+    - agent-grpc
     - liveness
   full_shutdown_duration: 600s
+  tls:
+    enabled: false
 ngt:
-  index_path: /var/data
+  index_path: /etc/server/backup
   dimension: {cfg.dimension}
   distance_type: {distance_type}
   object_type: float
@@ -108,6 +116,8 @@ ngt:
   auto_index_duration_limit: {vald_cfg.auto_index_duration_limit}
   auto_index_check_duration: {vald_cfg.auto_index_check_duration}
   auto_index_length: {vald_cfg.auto_index_length}
+  auto_save_index_duration: 90s
+  initial_delay_max_duration: 60s
   enable_in_memory_mode: true
   default_pool_size: 10000
 """
