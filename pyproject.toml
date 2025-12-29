@@ -31,11 +31,17 @@ chroma = [
 milvus = [
     "pymilvus>=2.4.4",
 ]
+vald = [
+    "vald-client-python>=1.7.13",
+    "grpcio>=1.60.0",
+]
 all = [
     "psycopg>=3.1.19",
     "pgvector>=0.3.0",
     "chromadb>=1.4.0",
     "pymilvus>=2.4.4",
+    "vald-client-python>=1.7.13",
+    "grpcio>=1.60.0",
 ]
 
 [project.scripts]
