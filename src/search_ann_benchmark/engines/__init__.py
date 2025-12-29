@@ -1,13 +1,17 @@
 """Vector search engine implementations."""
 
-from .qdrant import QdrantEngine, QdrantConfig
-from .elasticsearch import ElasticsearchEngine, ElasticsearchConfig
-from .opensearch import OpenSearchEngine, OpenSearchConfig
-from .milvus import MilvusEngine, MilvusConfig
-from .weaviate import WeaviateEngine, WeaviateConfig
-from .vespa import VespaEngine, VespaConfig
-from .pgvector import PgvectorEngine, PgvectorConfig
-from .chroma import ChromaEngine, ChromaConfig
+from .chroma import ChromaConfig, ChromaEngine
+from .clickhouse import ClickHouseConfig, ClickHouseEngine, ClickhouseConfig
+from .elasticsearch import ElasticsearchConfig, ElasticsearchEngine
+from .lancedb import LanceDBEngine, LancedbConfig
+from .milvus import MilvusConfig, MilvusEngine
+from .opensearch import OpenSearchConfig, OpenSearchEngine
+from .pgvector import PgvectorConfig, PgvectorEngine
+from .qdrant import QdrantConfig, QdrantEngine
+from .redisstack import RedisStackConfig, RedisStackEngine
+from .vald import ValdConfig, ValdEngine
+from .vespa import VespaConfig, VespaEngine
+from .weaviate import WeaviateConfig, WeaviateEngine
 
 ENGINE_REGISTRY: dict[str, type] = {
     "qdrant": QdrantEngine,
@@ -18,6 +22,10 @@ ENGINE_REGISTRY: dict[str, type] = {
     "vespa": VespaEngine,
     "pgvector": PgvectorEngine,
     "chroma": ChromaEngine,
+    "clickhouse": ClickHouseEngine,
+    "lancedb": LanceDBEngine,
+    "redisstack": RedisStackEngine,
+    "vald": ValdEngine,
 }
 
 
@@ -55,6 +63,15 @@ __all__ = [
     "PgvectorConfig",
     "ChromaEngine",
     "ChromaConfig",
+    "ClickHouseEngine",
+    "ClickHouseConfig",
+    "ClickhouseConfig",
+    "LanceDBEngine",
+    "LancedbConfig",
+    "RedisStackEngine",
+    "RedisStackConfig",
+    "ValdEngine",
+    "ValdConfig",
     "ENGINE_REGISTRY",
     "get_engine_class",
 ]

@@ -19,6 +19,10 @@ class TestEngineRegistry:
             "vespa",
             "pgvector",
             "chroma",
+            "clickhouse",
+            "lancedb",
+            "redisstack",
+            "vald",
         ]
         for engine in expected_engines:
             assert engine in ENGINE_REGISTRY, f"Engine {engine} not registered"

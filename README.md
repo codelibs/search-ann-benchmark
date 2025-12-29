@@ -20,6 +20,10 @@ This benchmarking suite aims to provide an empirical basis for comparing the per
 | Vespa | 8.620.35 | [![Run Vespa](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-vespa-linux.yml/badge.svg)](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-vespa-linux.yml) |
 | pgvector | 0.8.1-pg17 | [![Run pgvector](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-pgvector-linux.yml/badge.svg)](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-pgvector-linux.yml) |
 | Chroma | 1.4.0 | [![Run Chroma](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-chroma-linux.yml/badge.svg)](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-chroma-linux.yml) |
+| Redis Stack | 7.4.2-v2 | [![Run Redis Stack](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-redisstack-linux.yml/badge.svg)](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-redisstack-linux.yml) |
+| Vald | v1.7.17 | [![Run Vald](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-vald-linux.yml/badge.svg)](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-vald-linux.yml) |
+| ClickHouse | 25.8 | [![Run ClickHouse](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-clickhouse-linux.yml/badge.svg)](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-clickhouse-linux.yml) |
+| LanceDB | 0.26.0 | [![Run LanceDB](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-lancedb-linux.yml/badge.svg)](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-lancedb-linux.yml) |
 
 ## Prerequisites
 
@@ -140,7 +144,11 @@ search-ann-benchmark/
 │       ├── weaviate.py
 │       ├── vespa.py
 │       ├── pgvector.py
-│       └── chroma.py
+│       ├── chroma.py
+│       ├── clickhouse.py
+│       ├── lancedb.py
+│       ├── redisstack.py
+│       └── vald.py
 ├── tests/
 ├── scripts/
 │   ├── setup.sh            # Dataset download
