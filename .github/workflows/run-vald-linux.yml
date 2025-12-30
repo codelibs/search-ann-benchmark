@@ -77,7 +77,7 @@ jobs:
         env:
           TARGET_CONFIG: ${{ github.event.inputs.target_config || '100k-768-m32-efc200-ef100-ip' }}
         run: |
-          ARGS="--target ${TARGET_CONFIG} --version ${ENGINE_VERSION} --no-filter"
+          ARGS="--target ${TARGET_CONFIG} --version ${ENGINE_VERSION}"
           uv run search-ann-benchmark run ${ENGINE_NAME} ${ARGS}
 
       - name: Upload results

@@ -32,6 +32,8 @@ class ValdConfig(EngineConfig):
     auto_index_duration_limit: str = "1m"
     auto_index_check_duration: str = "30s"
     auto_index_length: int = 100
+    # Filtering settings (Vald uses post-filtering since NGT doesn't support native filtering)
+    filter_fetch_multiplier: int = 10
 
 
 class ValdEngine(VectorSearchEngine):
@@ -39,9 +41,7 @@ class ValdEngine(VectorSearchEngine):
 
     engine_name = "vald"
 
-    def __init__(
-        self, dataset_config: DatasetConfig, engine_config: ValdConfig | None = None
-    ):
+    def __init__(self, dataset_config: DatasetConfig, engine_config: ValdConfig | None = None):
         engine_config = engine_config or ValdConfig()
         super().__init__(dataset_config, engine_config)
         self._channel = None
@@ -49,8 +49,11 @@ class ValdEngine(VectorSearchEngine):
         self._search_stub = None
         self._remove_stub = None
         self._agent_stub = None  # For CreateIndex (Agent service)
-        self._info_stub = None   # For IndexInfo (Index service)
+        self._info_stub = None  # For IndexInfo (Index service)
         self._config_dir: Path | None = None
+        # Metadata storage for filtered search (doc_id -> section)
+        # Vald NGT doesn't support native filtering, so we use post-filtering
+        self._metadata: dict[int, str] = {}
 
     @property
     def vald_config(self) -> ValdConfig:
@@ -145,14 +148,12 @@ ngt:
         from vald.v1.vald import index_pb2_grpc, insert_pb2_grpc, remove_pb2_grpc, search_pb2_grpc
 
         if self._channel is None:
-            self._channel = grpc.insecure_channel(
-                f"{self.vald_config.host}:{self.vald_config.port}"
-            )
+            self._channel = grpc.insecure_channel(f"{self.vald_config.host}:{self.vald_config.port}")
             self._insert_stub = insert_pb2_grpc.InsertStub(self._channel)
             self._search_stub = search_pb2_grpc.SearchStub(self._channel)
             self._remove_stub = remove_pb2_grpc.RemoveStub(self._channel)
             self._agent_stub = agent_pb2_grpc.AgentStub(self._channel)  # CreateIndex
-            self._info_stub = index_pb2_grpc.IndexStub(self._channel)   # IndexInfo
+            self._info_stub = index_pb2_grpc.IndexStub(self._channel)  # IndexInfo
 
     def _close_grpc(self) -> None:
         """Close gRPC channel."""
@@ -212,9 +213,7 @@ ngt:
         for attempt in range(timeout):
             elapsed = time.time() - start
             try:
-                logger.debug(
-                    f"Health check attempt {attempt+1}/{timeout}, elapsed={elapsed:.1f}s"
-                )
+                logger.debug(f"Health check attempt {attempt + 1}/{timeout}, elapsed={elapsed:.1f}s")
                 # Check liveness endpoint
                 response = requests.get("http://localhost:3000/liveness", timeout=5)
                 if response.status_code == 200:
@@ -284,6 +283,9 @@ ngt:
         print("Cleaning up Vald... ", end="")
         self._close_grpc()
 
+        # Clear metadata storage
+        self._metadata.clear()
+
         # Clean up config directory
         if self._config_dir and self._config_dir.exists():
             import shutil
@@ -319,6 +321,12 @@ ngt:
         from vald.v1.payload import payload_pb2
 
         self._setup_grpc()
+
+        # Store metadata for filtered search (doc_id -> section)
+        # Vald NGT doesn't support native filtering, so we store metadata in-memory
+        for doc_id, doc in zip(ids, documents):
+            if "section" in doc:
+                self._metadata[doc_id] = doc["section"]
 
         # Build multi-insert request
         requests_list = []
@@ -360,9 +368,17 @@ ngt:
 
         self._setup_grpc()
 
+        # Determine how many results to fetch
+        # When filtering, fetch more candidates to ensure enough results after post-filtering
+        fetch_count = top_k
+        target_section: str | None = None
+        if filter_query and "section" in filter_query:
+            target_section = filter_query["section"]
+            fetch_count = top_k * self.vald_config.filter_fetch_multiplier
+
         # Build search request
         config = payload_pb2.Search.Config(
-            num=top_k,
+            num=fetch_count,
             radius=-1.0,  # -1 means unlimited
             epsilon=0.1,
             timeout=5000000000,  # 5 seconds in nanoseconds
@@ -378,6 +394,29 @@ ngt:
             elapsed = (time.time() - start_time) * 1000  # Convert to ms
 
             results = response.results
+
+            # Apply post-filtering if section filter is specified
+            if target_section is not None:
+                filtered_ids = []
+                filtered_scores = []
+                for r in results:
+                    doc_id = int(r.id)
+                    # Check if document matches the target section
+                    if self._metadata.get(doc_id) == target_section:
+                        filtered_ids.append(doc_id)
+                        filtered_scores.append(r.distance)
+                        if len(filtered_ids) >= top_k:
+                            break
+
+                return SearchResult(
+                    query_id=0,
+                    took_ms=elapsed,
+                    hits=len(filtered_ids),
+                    ids=filtered_ids,
+                    scores=filtered_scores,
+                )
+
+            # No filtering - return results as-is
             return SearchResult(
                 query_id=0,
                 took_ms=elapsed,
@@ -388,13 +427,9 @@ ngt:
         except Exception as e:
             elapsed = (time.time() - start_time) * 1000
             logger.error(f"Search failed: {e}")
-            return SearchResult(
-                query_id=0, took_ms=elapsed, hits=0, ids=[], scores=[]
-            )
+            return SearchResult(query_id=0, took_ms=elapsed, hits=0, ids=[], scores=[])
 
-    def wait_for_indexing_complete(
-        self, check_interval: float = 1.0, stable_count: int = 30
-    ) -> None:
+    def wait_for_indexing_complete(self, check_interval: float = 1.0, stable_count: int = 30) -> None:
         """Wait for Vald to complete indexing by triggering CreateIndex."""
         from vald.v1.payload import payload_pb2
 
@@ -413,9 +448,7 @@ ngt:
             logger.warning(f"CreateIndex call failed (may be expected): {e}")
 
         # Wait for index to stabilize
-        logger.debug(
-            f"Waiting for indexing to complete (stable_count={stable_count}, interval={check_interval}s)"
-        )
+        logger.debug(f"Waiting for indexing to complete (stable_count={stable_count}, interval={check_interval}s)")
         start = time.time()
         count = 0
         total_checks = 0
@@ -469,8 +502,9 @@ ngt:
     def _build_filter_query(self, section: str) -> dict[str, Any]:
         """Build filter query for section.
 
-        Note: Vald agent standalone does not support filtering.
-        This returns an empty dict and filtering is handled at query time.
+        Note: Vald NGT does not support native filtering, so we use post-filtering.
+        The filter query is used to filter results after the ANN search by checking
+        against metadata stored in-memory during document insertion.
         """
         return {"section": section}
 
