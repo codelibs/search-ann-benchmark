@@ -121,7 +121,7 @@ class PgvectorEngine(VectorSearchEngine):
                     doc_id integer PRIMARY KEY,
                     page_id integer,
                     rev_id integer,
-                    section character(128),
+                    section text,
                     embedding {vector_type}({cfg.dimension})
                 );
             """)
