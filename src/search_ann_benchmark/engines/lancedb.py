@@ -26,6 +26,9 @@ class LancedbConfig(EngineConfig):
     version: str = "0.26.0"
     container_name: str = ""  # Not used for embedded database
     db_path: str = ".lancedb"
+    # Fetch multiplier for filtered search - fetch more candidates before filtering
+    # to ensure we get enough results after post-filtering is applied
+    filter_fetch_multiplier: float = 10.0
 
 
 class LanceDBEngine(VectorSearchEngine):
@@ -231,18 +234,26 @@ class LanceDBEngine(VectorSearchEngine):
             query = query.metric(self.normalize_distance(cfg.distance))
 
             # Apply filter if provided
+            # When filtering, fetch more candidates to ensure we get enough results
+            # after post-filtering is applied (similar to ClickHouse's fetch multiplier)
+            fetch_limit = top_k
             if filter_query:
                 where_clause = filter_query.get("where", "")
                 if where_clause:
                     query = query.where(where_clause)
+                    # Apply fetch multiplier for filtered search
+                    fetch_limit = int(top_k * self.engine_config.filter_fetch_multiplier)
 
             # Set search parameters
             # nprobes controls how many IVF partitions to search
             nprobes = max(1, min(50, cfg.hnsw_ef // 2))
             query = query.nprobes(nprobes)
 
-            # Execute search
-            results = query.limit(top_k).to_list()
+            # Execute search with potentially higher limit for filtered queries
+            results = query.limit(fetch_limit).to_list()
+
+            # Trim results to requested top_k
+            results = results[:top_k]
             took_ms = (time.time() - start_time) * 1000
 
             # Extract results
