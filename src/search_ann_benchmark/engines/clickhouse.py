@@ -296,6 +296,18 @@ class ClickHouseEngine(VectorSearchEngine):
         # cosineDistance = 1 - cosine_similarity = 1 - dot_product (for unit vectors)
         distance_expr = f"{distance_function}(embedding, {vector_str})"
 
+        # Build SETTINGS clause
+        # When using filtered search, ClickHouse uses post-filtering by default, which
+        # may return fewer results than requested. To improve precision, we use
+        # vector_search_index_fetch_multiplier to fetch more candidates before filtering.
+        settings_parts = [f"hnsw_candidate_list_size_for_search = {cfg.hnsw_ef}"]
+        if filter_query:
+            # Fetch 10x more candidates when filtering to ensure we get enough results
+            # after post-filtering is applied
+            settings_parts.append("vector_search_index_fetch_multiplier = 10.0")
+
+        settings_clause = ", ".join(settings_parts)
+
         query = f"""
             SELECT
                 doc_id,
@@ -305,7 +317,7 @@ class ClickHouseEngine(VectorSearchEngine):
             ORDER BY distance ASC
             LIMIT {top_k}
             SETTINGS
-                hnsw_candidate_list_size_for_search = {cfg.hnsw_ef}
+                {settings_clause}
         """
 
         start_time = time.time()
