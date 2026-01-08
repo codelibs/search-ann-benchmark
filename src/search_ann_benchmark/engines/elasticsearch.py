@@ -100,6 +100,8 @@ class ElasticsearchEngine(VectorSearchEngine):
             return "int4_hnsw"
         elif cfg.quantization == "bbq":
             return "bbq_hnsw"
+        elif cfg.quantization == "bbq_disk":
+            return "bbq_disk"
         return "hnsw"
 
     def create_index(self, number_of_shards: int = 1, number_of_replicas: int = 0) -> None:

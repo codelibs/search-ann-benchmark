@@ -1,0 +1,91 @@
+name: Run Elasticsearch (bbq_disk) benchmark on Linux
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/search_ann_benchmark/__init__.py'
+      - 'src/search_ann_benchmark/cli.py'
+      - 'src/search_ann_benchmark/config.py'
+      - 'src/search_ann_benchmark/runner.py'
+      - 'src/search_ann_benchmark/core/**'
+      - 'src/search_ann_benchmark/engines/__init__.py'
+      - 'src/search_ann_benchmark/engines/elasticsearch.py'
+      - '.github/workflows/run-elasticsearch-bbq-disk-linux.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'src/search_ann_benchmark/__init__.py'
+      - 'src/search_ann_benchmark/cli.py'
+      - 'src/search_ann_benchmark/config.py'
+      - 'src/search_ann_benchmark/runner.py'
+      - 'src/search_ann_benchmark/core/**'
+      - 'src/search_ann_benchmark/engines/__init__.py'
+      - 'src/search_ann_benchmark/engines/elasticsearch.py'
+      - '.github/workflows/run-elasticsearch-bbq-disk-linux.yml'
+  workflow_dispatch:
+    inputs:
+      target_config:
+        description: 'Target configuration'
+        required: false
+        default: '100k-768-m32-efc200-ef100-ip'
+        type: choice
+        options:
+          - 100k-768-m32-efc200-ef100-ip
+          - 1m-768-m48-efc200-ef100-ip
+          - 5m-768-m48-efc200-ef100-ip
+
+env:
+  ENGINE_NAME: elasticsearch
+  ENGINE_VERSION: "9.2.3"
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Report Hardware
+        run: bash scripts/get_hardware_info.sh
+
+      - name: Cache dataset
+        uses: actions/cache@v4
+        with:
+          path: dataset
+          key: ${{ runner.os }}-dataset-gha-v1
+
+      - name: Download dataset
+        run: bash scripts/setup.sh gha
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run benchmark
+        env:
+          TARGET_CONFIG: ${{ github.event.inputs.target_config || '100k-768-m32-efc200-ef100-ip' }}
+          PRODUCT_VARIANT: "bbq_disk"
+        run: |
+          uv run search-ann-benchmark run ${ENGINE_NAME} \
+            --target ${TARGET_CONFIG} \
+            --version ${ENGINE_VERSION} \
+            --quantization bbq_disk \
+            --variant bbq_disk
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: elasticsearch-bbq-disk-results
+          path: results.json
