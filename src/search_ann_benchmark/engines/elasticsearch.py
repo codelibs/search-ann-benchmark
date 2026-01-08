@@ -100,12 +100,21 @@ class ElasticsearchEngine(VectorSearchEngine):
             return "int4_hnsw"
         elif cfg.quantization == "bbq":
             return "bbq_hnsw"
+        elif cfg.quantization == "bbq_disk":
+            return "bbq_disk"
         return "hnsw"
 
     def create_index(self, number_of_shards: int = 1, number_of_replicas: int = 0) -> None:
         cfg = self.dataset_config
         knn_type = self._get_knn_type()
         logger.info(f"Creating index {cfg.index_name} with {knn_type}...")
+
+        # Build index_options based on knn_type
+        # bbq_disk does not support HNSW parameters (m, ef_construction)
+        index_options: dict[str, Any] = {"type": knn_type}
+        if knn_type != "bbq_disk":
+            index_options["m"] = cfg.hnsw_m
+            index_options["ef_construction"] = cfg.hnsw_ef_construction
 
         response = requests.put(
             f"{self.base_url}/{cfg.index_name}",
@@ -124,11 +133,7 @@ class ElasticsearchEngine(VectorSearchEngine):
                             "dims": cfg.dimension,
                             "index": True,
                             "similarity": cfg.distance,
-                            "index_options": {
-                                "type": knn_type,
-                                "m": cfg.hnsw_m,
-                                "ef_construction": cfg.hnsw_ef_construction,
-                            },
+                            "index_options": index_options,
                         },
                     },
                 },
