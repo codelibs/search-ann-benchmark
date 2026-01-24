@@ -49,7 +49,7 @@ on:
 
 env:
   ENGINE_NAME: elasticsearch
-  ENGINE_VERSION: "9.2.3"
+  ENGINE_VERSION: "9.2.4"
 
 jobs:
   benchmark:

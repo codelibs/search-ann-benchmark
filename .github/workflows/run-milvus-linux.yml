@@ -39,7 +39,7 @@ on:
 
 env:
   ENGINE_NAME: milvus
-  ENGINE_VERSION: "2.6.7"
+  ENGINE_VERSION: "2.6.9"
 
 jobs:
   benchmark:
