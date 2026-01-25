@@ -23,7 +23,7 @@ class LancedbConfig(EngineConfig):
     name: str = "lancedb"
     host: str = "localhost"
     port: int = 0  # Not used for embedded database
-    version: str = "0.26.0"
+    version: str = "0.26.1"
     container_name: str = ""  # Not used for embedded database
     db_path: str = ".lancedb"
     # Fetch multiplier for filtered search - fetch more candidates before filtering

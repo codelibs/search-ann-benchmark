@@ -39,7 +39,7 @@ on:
 
 env:
   ENGINE_NAME: chroma
-  ENGINE_VERSION: "1.4.0"
+  ENGINE_VERSION: "1.4.1"
 
 jobs:
   benchmark:

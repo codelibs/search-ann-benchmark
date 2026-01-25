@@ -21,7 +21,7 @@ class ChromaConfig(EngineConfig):
     name: str = "chroma"
     host: str = "localhost"
     port: int = 8008
-    version: str = "1.4.0"
+    version: str = "1.4.1"
     container_name: str = "benchmark_chroma"
 
 
