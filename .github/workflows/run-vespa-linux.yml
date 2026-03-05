@@ -39,7 +39,7 @@ on:
 
 env:
   ENGINE_NAME: vespa
-  ENGINE_VERSION: "8.631.39"
+  ENGINE_VERSION: "8.650.16"
 
 jobs:
   benchmark:

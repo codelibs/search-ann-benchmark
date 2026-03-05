@@ -30,7 +30,7 @@ class VespaConfig(EngineConfig):
     name: str = "vespa"
     host: str = "localhost"
     port: int = 8090
-    version: str = "8.631.39"
+    version: str = "8.650.16"
     container_name: str = "benchmark_vespa"
     management_port: int = 19081
 
