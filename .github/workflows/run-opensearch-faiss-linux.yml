@@ -39,7 +39,7 @@ on:
 
 env:
   ENGINE_NAME: opensearch
-  ENGINE_VERSION: "3.4.0"
+  ENGINE_VERSION: "3.5.0"
 
 jobs:
   benchmark:
