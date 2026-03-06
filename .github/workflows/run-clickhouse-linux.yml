@@ -39,7 +39,7 @@ on:
 
 env:
   ENGINE_NAME: clickhouse
-  ENGINE_VERSION: "25.8"
+  ENGINE_VERSION: "26.2"
 
 jobs:
   benchmark:
