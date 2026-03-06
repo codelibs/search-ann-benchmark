@@ -23,12 +23,9 @@ class LancedbConfig(EngineConfig):
     name: str = "lancedb"
     host: str = "localhost"
     port: int = 0  # Not used for embedded database
-    version: str = "0.26.1"
+    version: str = "0.29.2"
     container_name: str = ""  # Not used for embedded database
     db_path: str = ".lancedb"
-    # Fetch multiplier for filtered search - fetch more candidates before filtering
-    # to ensure we get enough results after post-filtering is applied
-    filter_fetch_multiplier: float = 10.0
 
 
 class LanceDBEngine(VectorSearchEngine):
@@ -120,8 +117,12 @@ class LanceDBEngine(VectorSearchEngine):
 
         logger.info(f"Creating vector index: type={index_type}, metric={metric}")
 
-        # Calculate num_partitions based on dataset size
-        num_partitions = max(1, cfg.index_size // 8192)
+        # IVF_HNSW_SQ/PQ benefit from fewer partitions; LanceDB docs recommend ~1
+        # for smaller datasets. More partitions fragment HNSW graphs and hurt quality.
+        if index_type in ("IVF_HNSW_SQ", "IVF_HNSW_PQ"):
+            num_partitions = max(1, cfg.index_size // 500000)
+        else:
+            num_partitions = max(1, cfg.index_size // 8192)
 
         try:
             table.create_index(
@@ -129,6 +130,8 @@ class LanceDBEngine(VectorSearchEngine):
                 index_type=index_type,
                 metric=metric,
                 num_partitions=num_partitions,
+                m=cfg.hnsw_m,
+                ef_construction=cfg.hnsw_ef_construction,
             )
             logger.info(f"Vector index created [OK]")
         except Exception as e:
@@ -234,26 +237,19 @@ class LanceDBEngine(VectorSearchEngine):
             query = query.metric(self.normalize_distance(cfg.distance))
 
             # Apply filter if provided
-            # When filtering, fetch more candidates to ensure we get enough results
-            # after post-filtering is applied (similar to ClickHouse's fetch multiplier)
-            fetch_limit = top_k
+            # LanceDB 0.29+ uses prefiltering by default, so no fetch multiplier needed
             if filter_query:
                 where_clause = filter_query.get("where", "")
                 if where_clause:
-                    query = query.where(where_clause)
-                    # Apply fetch multiplier for filtered search
-                    fetch_limit = int(top_k * self.engine_config.filter_fetch_multiplier)
+                    query = query.where(where_clause, prefilter=True)
 
             # Set search parameters
-            # nprobes controls how many IVF partitions to search
+            query = query.ef(cfg.hnsw_ef)
             nprobes = max(1, min(50, cfg.hnsw_ef // 2))
             query = query.nprobes(nprobes)
+            query = query.refine_factor(2)
 
-            # Execute search with potentially higher limit for filtered queries
-            results = query.limit(fetch_limit).to_list()
-
-            # Trim results to requested top_k
-            results = results[:top_k]
+            results = query.limit(top_k).to_list()
             took_ms = (time.time() - start_time) * 1000
 
             # Extract results

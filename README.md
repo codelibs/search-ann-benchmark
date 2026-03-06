@@ -23,7 +23,7 @@ This benchmarking suite aims to provide an empirical basis for comparing the per
 | Redis Stack | 7.4.0-v8 | [![Run Redis Stack](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-redisstack-linux.yml/badge.svg)](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-redisstack-linux.yml) |
 | Vald | v1.7.17 | [![Run Vald](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-vald-linux.yml/badge.svg)](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-vald-linux.yml) |
 | ClickHouse | 26.2 | [![Run ClickHouse](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-clickhouse-linux.yml/badge.svg)](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-clickhouse-linux.yml) |
-| LanceDB | 0.26.0 | [![Run LanceDB](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-lancedb-linux.yml/badge.svg)](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-lancedb-linux.yml) |
+| LanceDB | 0.29.2 | [![Run LanceDB](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-lancedb-linux.yml/badge.svg)](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-lancedb-linux.yml) |
 
 ## Prerequisites
 
