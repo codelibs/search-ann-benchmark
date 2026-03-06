@@ -39,7 +39,7 @@ on:
 
 env:
   ENGINE_NAME: lancedb
-  ENGINE_VERSION: "0.26.1"
+  ENGINE_VERSION: "0.29.2"
 
 jobs:
   benchmark:
