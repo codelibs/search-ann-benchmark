@@ -22,7 +22,7 @@ class ClickHouseConfig(EngineConfig):
     name: str = "clickhouse"
     host: str = "localhost"
     port: int = 8123
-    version: str = "25.8"
+    version: str = "26.2"
     container_name: str = "benchmark_clickhouse"
     database: str = "default"
 
