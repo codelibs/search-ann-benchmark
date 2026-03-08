@@ -357,6 +357,11 @@ class ElasticsearchEngine(VectorSearchEngine):
         """Wait for indexing to complete using flush/close/open/refresh cycle."""
         logger.debug("Starting indexing complete sequence (flush/close/open/refresh)")
         self.flush_index()
+
+        # bbq_disk requires force merge to a single segment for disk-based search to work
+        if self._get_knn_type() == "bbq_disk":
+            self.forcemerge_index()
+
         self.close_index()
 
         # Wait for index to be closed (poll instead of fixed sleep)
