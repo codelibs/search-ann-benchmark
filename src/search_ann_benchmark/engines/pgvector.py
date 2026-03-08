@@ -147,6 +147,7 @@ class PgvectorEngine(VectorSearchEngine):
         start_time = time.time()
         with psycopg.connect(f"dbname={pg_cfg.dbname} {pg_cfg.conninfo}") as conn:
             conn.execute(create_idx)
+            conn.execute(f"CREATE INDEX ON {cfg.index_name} (section);")
         elapsed = time.time() - start_time
         print(f"[OK] {elapsed:.2f}s")
 
@@ -265,6 +266,8 @@ class PgvectorEngine(VectorSearchEngine):
             with conn.cursor() as cur:
                 cur.execute("BEGIN;")
                 cur.execute(f"SET LOCAL hnsw.ef_search = {cfg.hnsw_ef};")
+                if filter_query:
+                    cur.execute("SET LOCAL hnsw.iterative_scan = relaxed_order;")
                 cur.execute(query, tuple(params))
                 docs = cur.fetchall()
                 took_ms = (time.time() - start_time) * 1000
