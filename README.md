@@ -12,8 +12,8 @@ This benchmarking suite aims to provide an empirical basis for comparing the per
 
 | Engine | Version | GitHub Actions |
 |--------|---------|----------------|
-| Qdrant | 1.16.2 | [![Run Qdrant](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-qdrant-linux.yml/badge.svg)](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-qdrant-linux.yml) |
-| Elasticsearch | 9.2.3 | [![Run Elasticsearch](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-elasticsearch-linux.yml/badge.svg)](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-elasticsearch-linux.yml) |
+| Qdrant | 1.17.0 | [![Run Qdrant](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-qdrant-linux.yml/badge.svg)](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-qdrant-linux.yml) |
+| Elasticsearch | 9.3.1 | [![Run Elasticsearch](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-elasticsearch-linux.yml/badge.svg)](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-elasticsearch-linux.yml) |
 | OpenSearch | 3.5.0 | [![Run OpenSearch](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-opensearch-linux.yml/badge.svg)](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-opensearch-linux.yml) |
 | Milvus | 2.6.11 | [![Run Milvus](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-milvus-linux.yml/badge.svg)](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-milvus-linux.yml) |
 | Weaviate | 1.36.2 | [![Run Weaviate](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-weaviate-linux.yml/badge.svg)](https://github.com/codelibs/search-ann-benchmark/actions/workflows/run-weaviate-linux.yml) |
