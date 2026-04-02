@@ -39,7 +39,7 @@ on:
 
 env:
   ENGINE_NAME: qdrant
-  ENGINE_VERSION: "1.17.0"
+  ENGINE_VERSION: "1.17.1"
 
 jobs:
   benchmark:
