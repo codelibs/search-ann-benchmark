@@ -24,7 +24,7 @@ class MilvusConfig(EngineConfig):
     name: str = "milvus"
     host: str = "localhost"
     port: int = 19540
-    version: str = "2.6.11"
+    version: str = "2.6.14"
     container_name: str = "benchmark_milvus"
     etcd_version: str = "3.5.25"
     minio_version: str = "RELEASE.2024-05-28T17-19-04Z"
