@@ -47,7 +47,7 @@ on:
 
 env:
   ENGINE_NAME: weaviate
-  ENGINE_VERSION: "1.36.2"
+  ENGINE_VERSION: "1.36.9"
 
 jobs:
   benchmark:
