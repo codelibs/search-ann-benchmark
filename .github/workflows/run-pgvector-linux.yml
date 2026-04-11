@@ -47,7 +47,7 @@ on:
 
 env:
   ENGINE_NAME: pgvector
-  ENGINE_VERSION: "0.8.2-pg17"
+  ENGINE_VERSION: "0.8.2-pg18"
 
 jobs:
   benchmark:
