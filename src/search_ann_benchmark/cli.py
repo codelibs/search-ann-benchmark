@@ -40,7 +40,7 @@ def main() -> None:
 @click.option(
     "--quantization",
     default=None,
-    type=click.Choice(["none", "int4", "int8", "bbq", "bbq_disk", "pq", "byte", "halfvec"]),
+    type=click.Choice(["none", "int4", "int8", "bbq", "bbq_disk", "bbq_disk_2bit", "bbq_disk_4bit", "pq", "byte", "halfvec"]),
     help="Quantization mode",
 )
 @click.option(
