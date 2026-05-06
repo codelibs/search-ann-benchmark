@@ -22,7 +22,7 @@ class ElasticsearchConfig(EngineConfig):
     name: str = "elasticsearch"
     host: str = "localhost"
     port: int = 9211
-    version: str = "9.3.3"
+    version: str = "9.4.0"
     container_name: str = "benchmark_es"
     heap: str = "2g"
 
@@ -100,9 +100,18 @@ class ElasticsearchEngine(VectorSearchEngine):
             return "int4_hnsw"
         elif cfg.quantization == "bbq":
             return "bbq_hnsw"
-        elif cfg.quantization == "bbq_disk":
+        elif cfg.quantization in ("bbq_disk", "bbq_disk_2bit", "bbq_disk_4bit"):
             return "bbq_disk"
         return "hnsw"
+
+    def _get_bbq_disk_bits(self) -> int | None:
+        # ES 9.4.0+: bbq_disk supports 1 (default), 2, or 4-bit quantization via index_options.bits
+        cfg = self.dataset_config
+        if cfg.quantization == "bbq_disk_2bit":
+            return 2
+        if cfg.quantization == "bbq_disk_4bit":
+            return 4
+        return None
 
     def create_index(self, number_of_shards: int = 1, number_of_replicas: int = 0) -> None:
         cfg = self.dataset_config
@@ -115,6 +124,10 @@ class ElasticsearchEngine(VectorSearchEngine):
         if knn_type != "bbq_disk":
             index_options["m"] = cfg.hnsw_m
             index_options["ef_construction"] = cfg.hnsw_ef_construction
+        else:
+            bits = self._get_bbq_disk_bits()
+            if bits is not None:
+                index_options["bits"] = bits
 
         response = requests.put(
             f"{self.base_url}/{cfg.index_name}",

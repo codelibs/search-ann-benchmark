@@ -1,4 +1,4 @@
-name: Run Elasticsearch (bbq) benchmark on Linux
+name: Run Elasticsearch (bbq_disk 2-bit) benchmark on Linux
 
 on:
   push:
@@ -12,7 +12,7 @@ on:
       - 'src/search_ann_benchmark/core/**'
       - 'src/search_ann_benchmark/engines/__init__.py'
       - 'src/search_ann_benchmark/engines/elasticsearch.py'
-      - '.github/workflows/run-elasticsearch-bbq-linux.yml'
+      - '.github/workflows/run-elasticsearch-bbq-disk-2bit-linux.yml'
   pull_request:
     branches:
       - main
@@ -24,7 +24,7 @@ on:
       - 'src/search_ann_benchmark/core/**'
       - 'src/search_ann_benchmark/engines/__init__.py'
       - 'src/search_ann_benchmark/engines/elasticsearch.py'
-      - '.github/workflows/run-elasticsearch-bbq-linux.yml'
+      - '.github/workflows/run-elasticsearch-bbq-disk-2bit-linux.yml'
   workflow_dispatch:
     inputs:
       target_config:
@@ -76,16 +76,16 @@ jobs:
       - name: Run benchmark
         env:
           TARGET_CONFIG: ${{ github.event.inputs.target_config || '100k-768-m32-efc200-ef100-ip' }}
-          PRODUCT_VARIANT: "bbq"
+          PRODUCT_VARIANT: "bbq_disk_2bit"
         run: |
           uv run search-ann-benchmark run ${ENGINE_NAME} \
             --target ${TARGET_CONFIG} \
             --version ${ENGINE_VERSION} \
-            --quantization bbq \
-            --variant bbq
+            --quantization bbq_disk_2bit \
+            --variant bbq_disk_2bit
 
       - name: Upload results
         uses: actions/upload-artifact@v4
         with:
-          name: elasticsearch-bbq-results
+          name: elasticsearch-bbq-disk-2bit-results
           path: results.json
