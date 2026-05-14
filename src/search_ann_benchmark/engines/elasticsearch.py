@@ -64,6 +64,11 @@ class ElasticsearchEngine(VectorSearchEngine):
             "-e", "discovery.type=single-node",
             "-e", "bootstrap.memory_lock=true",
             "-e", "xpack.security.enabled=false",
+            # Trial license enables commercial features required by some
+            # quantization types (notably `bbq_disk`, which is non-compliant
+            # under the default basic license since 9.4 and rejects writes
+            # with HTTP 403 / security_exception).
+            "-e", "xpack.license.self_generated.type=trial",
             "-e", f"ES_JAVA_OPTS=-Xms{self.es_config.heap}",
             f"docker.elastic.co/elasticsearch/elasticsearch:{self.engine_config.version}",
         ]
@@ -104,14 +109,22 @@ class ElasticsearchEngine(VectorSearchEngine):
             return "bbq_disk"
         return "hnsw"
 
-    def _get_bbq_disk_bits(self) -> int | None:
+    def _get_bbq_disk_bits(self) -> int:
         # ES 9.4.0+: bbq_disk supports 1 (default), 2, or 4-bit quantization via index_options.bits
         cfg = self.dataset_config
         if cfg.quantization == "bbq_disk_2bit":
             return 2
         if cfg.quantization == "bbq_disk_4bit":
             return 4
-        return None
+        return 1
+
+    def _get_bbq_disk_oversample(self) -> float:
+        # ES 9.4.0+: auto oversampling_factor by bits. Set explicitly because the
+        # auto value only applies reliably when bits is set in index_options and
+        # rescore_vector is provided on the query. Without an explicit oversample,
+        # 9.4's new DiskBBQ defaults can yield 0 precision on small datasets.
+        bits = self._get_bbq_disk_bits()
+        return {1: 3.0, 2: 1.5, 4: 1.0, 7: 1.0}.get(bits, 3.0)
 
     def create_index(self, number_of_shards: int = 1, number_of_replicas: int = 0) -> None:
         cfg = self.dataset_config
@@ -125,9 +138,8 @@ class ElasticsearchEngine(VectorSearchEngine):
             index_options["m"] = cfg.hnsw_m
             index_options["ef_construction"] = cfg.hnsw_ef_construction
         else:
-            bits = self._get_bbq_disk_bits()
-            if bits is not None:
-                index_options["bits"] = bits
+            # Always set bits explicitly so 9.4's auto oversampling_factor kicks in
+            index_options["bits"] = self._get_bbq_disk_bits()
 
         response = requests.put(
             f"{self.base_url}/{cfg.index_name}",
@@ -304,13 +316,18 @@ class ElasticsearchEngine(VectorSearchEngine):
         cfg = self.dataset_config
         num_candidates = max(cfg.hnsw_ef, top_k)
 
-        query: dict[str, Any] = {
-            "knn": {
-                "field": "embedding",
-                "query_vector": query_vector,
-                "num_candidates": num_candidates,
-            }
+        knn: dict[str, Any] = {
+            "field": "embedding",
+            "query_vector": query_vector,
+            "num_candidates": num_candidates,
         }
+        # ES 9.4.0 rewrote DiskBBQ (PR #143760) and changed the default
+        # visit_percentage formula (PR #142784). Without an explicit
+        # rescore_vector, small datasets yield ~0 Precision@k.
+        if self._get_knn_type() == "bbq_disk":
+            knn["rescore_vector"] = {"oversample": self._get_bbq_disk_oversample()}
+
+        query: dict[str, Any] = {"knn": knn}
 
         if filter_query:
             query["knn"]["filter"] = filter_query
