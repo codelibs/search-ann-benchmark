@@ -126,6 +126,16 @@ class ElasticsearchEngine(VectorSearchEngine):
         bits = self._get_bbq_disk_bits()
         return {1: 3.0, 2: 1.5, 4: 1.0, 7: 1.0}.get(bits, 3.0)
 
+    def _get_bbq_disk_visit_percentage(self) -> int:
+        # ES 9.4's DiskBBQ visit-ratio formula (V_MIN=0.3%, V_MAX=4%, capped by
+        # `0.045 * (1M/N)^0.35`) yields a very small visit ratio for typical
+        # benchmark sizes (e.g. ~0.1% at 100k docs), which collapses Precision@k
+        # for larger k. Override `default_visit_percentage` at index time with a
+        # high value so cluster coverage is wide enough that oversample/rescore
+        # has meaningful candidates to rerank. 10% gives high recall on the
+        # dataset sizes used here (100k–5M) at the documented cost of latency.
+        return 10
+
     def create_index(self, number_of_shards: int = 1, number_of_replicas: int = 0) -> None:
         cfg = self.dataset_config
         knn_type = self._get_knn_type()
@@ -140,6 +150,7 @@ class ElasticsearchEngine(VectorSearchEngine):
         else:
             # Always set bits explicitly so 9.4's auto oversampling_factor kicks in
             index_options["bits"] = self._get_bbq_disk_bits()
+            index_options["default_visit_percentage"] = self._get_bbq_disk_visit_percentage()
 
         response = requests.put(
             f"{self.base_url}/{cfg.index_name}",
