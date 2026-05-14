@@ -64,6 +64,11 @@ class ElasticsearchEngine(VectorSearchEngine):
             "-e", "discovery.type=single-node",
             "-e", "bootstrap.memory_lock=true",
             "-e", "xpack.security.enabled=false",
+            # Trial license enables commercial features required by some
+            # quantization types (notably `bbq_disk`, which is non-compliant
+            # under the default basic license since 9.4 and rejects writes
+            # with HTTP 403 / security_exception).
+            "-e", "xpack.license.self_generated.type=trial",
             "-e", f"ES_JAVA_OPTS=-Xms{self.es_config.heap}",
             f"docker.elastic.co/elasticsearch/elasticsearch:{self.engine_config.version}",
         ]
