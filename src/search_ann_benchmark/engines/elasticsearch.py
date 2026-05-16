@@ -75,9 +75,9 @@ class ElasticsearchEngine(VectorSearchEngine):
 
     def wait_until_ready(self, timeout: int = 60) -> bool:
         logger.info(f"Waiting for {self.engine_config.container_name}...")
-        start = time.time()
+        start = time.perf_counter()
         for attempt in range(timeout):
-            elapsed = time.time() - start
+            elapsed = time.perf_counter() - start
             try:
                 logger.debug(f"Health check attempt {attempt+1}/{timeout}, elapsed={elapsed:.1f}s")
                 response = requests.get(f"{self.base_url}/", timeout=5)
@@ -232,14 +232,14 @@ class ElasticsearchEngine(VectorSearchEngine):
 
         bulk_body = self._generate_bulk_ndjson(documents, embeddings, ids)
 
-        start = time.time()
+        start = time.perf_counter()
         logger.debug(f"POST {self.base_url}/_bulk starting")
         response = requests.post(
             f"{self.base_url}/_bulk",
             headers={"Content-Type": "application/x-ndjson"},
             data=bulk_body,
         )
-        elapsed = time.time() - start
+        elapsed = time.perf_counter() - start
 
         if response.status_code == 200:
             result = response.json()
@@ -266,9 +266,9 @@ class ElasticsearchEngine(VectorSearchEngine):
     def flush_index(self) -> None:
         cfg = self.dataset_config
         logger.info(f"Flushing {cfg.index_name}...")
-        start = time.time()
+        start = time.perf_counter()
         response = requests.post(f"{self.base_url}/{cfg.index_name}/_flush", timeout=600)
-        elapsed = time.time() - start
+        elapsed = time.perf_counter() - start
         if response.status_code == 200:
             logger.info(f"Flush completed in {elapsed:.1f}s [OK]")
         else:
@@ -277,9 +277,9 @@ class ElasticsearchEngine(VectorSearchEngine):
     def refresh_index(self) -> None:
         cfg = self.dataset_config
         logger.info(f"Refreshing {cfg.index_name}...")
-        start = time.time()
+        start = time.perf_counter()
         response = requests.post(f"{self.base_url}/{cfg.index_name}/_refresh", timeout=600)
-        elapsed = time.time() - start
+        elapsed = time.perf_counter() - start
         if response.status_code == 200:
             logger.info(f"Refresh completed in {elapsed:.1f}s [OK]")
         else:
@@ -288,9 +288,9 @@ class ElasticsearchEngine(VectorSearchEngine):
     def close_index(self) -> None:
         cfg = self.dataset_config
         logger.info(f"Closing {cfg.index_name}...")
-        start = time.time()
+        start = time.perf_counter()
         response = requests.post(f"{self.base_url}/{cfg.index_name}/_close", timeout=600)
-        elapsed = time.time() - start
+        elapsed = time.perf_counter() - start
         if response.status_code == 200:
             logger.info(f"Close completed in {elapsed:.1f}s [OK]")
         else:
@@ -299,9 +299,9 @@ class ElasticsearchEngine(VectorSearchEngine):
     def open_index(self) -> None:
         cfg = self.dataset_config
         logger.info(f"Opening {cfg.index_name}...")
-        start = time.time()
+        start = time.perf_counter()
         response = requests.post(f"{self.base_url}/{cfg.index_name}/_open", timeout=600)
-        elapsed = time.time() - start
+        elapsed = time.perf_counter() - start
         if response.status_code == 200:
             logger.info(f"Open completed in {elapsed:.1f}s [OK]")
         else:
@@ -310,9 +310,9 @@ class ElasticsearchEngine(VectorSearchEngine):
     def forcemerge_index(self) -> None:
         cfg = self.dataset_config
         logger.info(f"Merging {cfg.index_name}...")
-        start = time.time()
+        start = time.perf_counter()
         response = requests.post(f"{self.base_url}/{cfg.index_name}/_forcemerge?max_num_segments=1", timeout=3600)
-        elapsed = time.time() - start
+        elapsed = time.perf_counter() - start
         if response.status_code == 200:
             logger.info(f"Merge completed in {elapsed:.1f}s [OK]")
         else:

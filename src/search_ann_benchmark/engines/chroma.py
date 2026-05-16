@@ -49,9 +49,9 @@ class ChromaEngine(VectorSearchEngine):
 
     def wait_until_ready(self, timeout: int = 60) -> bool:
         logger.info(f"Waiting for {self.engine_config.container_name}...")
-        start = time.time()
+        start = time.perf_counter()
         for attempt in range(timeout):
-            elapsed = time.time() - start
+            elapsed = time.perf_counter() - start
             try:
                 logger.debug(f"Health check attempt {attempt+1}/{timeout}, elapsed={elapsed:.1f}s")
                 response = requests.get(f"{self.base_url}/api/v2/heartbeat", timeout=5)
@@ -131,14 +131,14 @@ class ChromaEngine(VectorSearchEngine):
         # Convert integer IDs to strings (Chroma requires string IDs)
         str_ids = list(map(str, ids))
 
-        start_time = time.time()
+        start_time = time.perf_counter()
         try:
             self._get_collection().add(
                 embeddings=embeddings,
                 metadatas=documents,
                 ids=str_ids,
             )
-            elapsed = time.time() - start_time
+            elapsed = time.perf_counter() - start_time
             logger.debug(f"Insert completed: {len(ids)} docs in {elapsed:.3f}s [OK]")
             return elapsed
         except Exception as e:
@@ -160,10 +160,10 @@ class ChromaEngine(VectorSearchEngine):
         if filter_query:
             query["where"] = filter_query
 
-        start_time = time.time()
+        start_time = time.perf_counter()
         try:
             result = self._get_collection().query(**query)
-            took_ms = (time.time() - start_time) * 1000
+            took_ms = (time.perf_counter() - start_time) * 1000
 
             ids_list = result.get("ids", [[]])[0]
             distances = result.get("distances", [[]])[0]

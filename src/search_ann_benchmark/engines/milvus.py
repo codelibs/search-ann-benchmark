@@ -140,9 +140,9 @@ networks:
 
     def wait_until_ready(self, timeout: int = 120) -> bool:
         logger.info(f"Waiting for {self.engine_config.container_name}...")
-        start = time.time()
+        start = time.perf_counter()
         for attempt in range(timeout):
-            elapsed = time.time() - start
+            elapsed = time.perf_counter() - start
             try:
                 logger.debug(f"Health check attempt {attempt+1}/{timeout}, elapsed={elapsed:.1f}s")
                 response = requests.post(
@@ -255,13 +255,13 @@ networks:
             for doc, embedding, doc_id in zip(documents, embeddings, ids)
         ]
 
-        start_time = time.time()
+        start_time = time.perf_counter()
         response = requests.post(
             f"{self.base_url}/v1/vector/insert",
             headers={"Accept": "application/json", "Content-Type": "application/json"},
             json={"collectionName": cfg.index_name, "data": docs},
         )
-        elapsed = time.time() - start_time
+        elapsed = time.perf_counter() - start_time
 
         result = response.json()
         if result.get("code") == 200:
@@ -293,14 +293,14 @@ networks:
         if filter_query:
             query["filter"] = filter_query
 
-        start_time = time.time()
+        start_time = time.perf_counter()
         response = self._get_session().post(
             f"{self.base_url}/v2/vectordb/entities/search",
             headers={"Accept": "application/json", "Content-Type": "application/json"},
             json=query,
             timeout=10,
         )
-        took_ms = (time.time() - start_time) * 1000
+        took_ms = (time.perf_counter() - start_time) * 1000
 
         obj = response.json()
         if obj.get("code") == 0:

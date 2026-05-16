@@ -61,9 +61,9 @@ class QdrantEngine(VectorSearchEngine):
 
     def wait_until_ready(self, timeout: int = 60) -> bool:
         logger.info(f"Waiting for {self.engine_config.container_name}...")
-        start = time.time()
+        start = time.perf_counter()
         for attempt in range(timeout):
-            elapsed = time.time() - start
+            elapsed = time.perf_counter() - start
             try:
                 logger.debug(f"Health check attempt {attempt+1}/{timeout}, elapsed={elapsed:.1f}s")
                 response = requests.get(f"{self.base_url}/cluster", timeout=5)

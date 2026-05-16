@@ -200,7 +200,7 @@ class VectorSearchEngine(ABC):
             stable_count: Number of consecutive stable checks required
         """
         logger.debug(f"Waiting for indexing to complete (stable_count={stable_count}, interval={check_interval}s)")
-        start = time.time()
+        start = time.perf_counter()
         count = 0
         total_checks = 0
         while count < stable_count:
@@ -210,13 +210,13 @@ class VectorSearchEngine(ABC):
                 count += 1
             else:
                 count = 0
-            elapsed = time.time() - start
+            elapsed = time.perf_counter() - start
             if logger.isEnabledFor(logging.DEBUG):
                 logger.debug(f"Indexing check {total_checks}: complete={is_complete}, stable_count={count}/{stable_count}, elapsed={elapsed:.1f}s")
             else:
                 print(".", end="", flush=True)
             time.sleep(check_interval)
-        elapsed = time.time() - start
+        elapsed = time.perf_counter() - start
         if not logger.isEnabledFor(logging.DEBUG):
             print(".")
         logger.debug(f"Indexing complete after {total_checks} checks in {elapsed:.1f}s")

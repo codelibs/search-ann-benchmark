@@ -67,9 +67,9 @@ class WeaviateEngine(VectorSearchEngine):
 
     def wait_until_ready(self, timeout: int = 60) -> bool:
         logger.info(f"Waiting for {self.engine_config.container_name}...")
-        start = time.time()
+        start = time.perf_counter()
         for attempt in range(timeout):
-            elapsed = time.time() - start
+            elapsed = time.perf_counter() - start
             try:
                 logger.debug(f"Health check attempt {attempt+1}/{timeout}, elapsed={elapsed:.1f}s")
                 response = requests.get(f"{self.base_url}/v1/nodes", timeout=5)
@@ -168,13 +168,13 @@ class WeaviateEngine(VectorSearchEngine):
             for doc, embedding, doc_id in zip(documents, embeddings, ids)
         ]
 
-        start_time = time.time()
+        start_time = time.perf_counter()
         response = requests.post(
             f"{self.base_url}/v1/batch/objects",
             headers={"Content-Type": "application/json"},
             json={"objects": objects},
         )
-        elapsed = time.time() - start_time
+        elapsed = time.perf_counter() - start_time
 
         if response.status_code == 200:
             # Check for partial failures in batch response
@@ -222,13 +222,13 @@ class WeaviateEngine(VectorSearchEngine):
   }}
 }}"""
 
-        start_time = time.time()
+        start_time = time.perf_counter()
         response = self._get_session().post(
             f"{self.base_url}/v1/graphql",
             json={"query": query},
             timeout=10,
         )
-        took_ms = (time.time() - start_time) * 1000
+        took_ms = (time.perf_counter() - start_time) * 1000
 
         if response.status_code == 200:
             obj = response.json()

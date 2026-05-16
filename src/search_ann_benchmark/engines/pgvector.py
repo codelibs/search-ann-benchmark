@@ -74,9 +74,9 @@ class PgvectorEngine(VectorSearchEngine):
         import psycopg
 
         logger.info(f"Waiting for {self.engine_config.container_name}...")
-        start = time.time()
+        start = time.perf_counter()
         for attempt in range(timeout):
-            elapsed = time.time() - start
+            elapsed = time.perf_counter() - start
             try:
                 logger.debug(f"Health check attempt {attempt+1}/{timeout}, elapsed={elapsed:.1f}s")
                 with psycopg.connect(self.pg_config.conninfo) as conn:
@@ -144,11 +144,11 @@ class PgvectorEngine(VectorSearchEngine):
         else:
             create_idx = f"CREATE INDEX ON {cfg.index_name} USING hnsw (embedding {vector_ops}) WITH (m = {cfg.hnsw_m}, ef_construction = {cfg.hnsw_ef_construction});"
 
-        start_time = time.time()
+        start_time = time.perf_counter()
         with psycopg.connect(f"dbname={pg_cfg.dbname} {pg_cfg.conninfo}") as conn:
             conn.execute(create_idx)
             conn.execute(f"CREATE INDEX ON {cfg.index_name} (section);")
-        elapsed = time.time() - start_time
+        elapsed = time.perf_counter() - start_time
         print(f"[OK] {elapsed:.2f}s")
 
     def wait_for_indexing_complete(self) -> None:
@@ -207,14 +207,14 @@ class PgvectorEngine(VectorSearchEngine):
             buffer.write(f"{doc_id}\t{page_id}\t{rev_id}\t{section}\t{embedding_str}\n")
         buffer.seek(0)
 
-        start_time = time.time()
+        start_time = time.perf_counter()
         try:
             with psycopg.connect(f"dbname={pg_cfg.dbname} {pg_cfg.conninfo}") as conn:
                 with conn.cursor() as cur:
                     with cur.copy(f"COPY {cfg.index_name} (doc_id, page_id, rev_id, section, embedding) FROM STDIN") as copy:
                         copy.write(buffer.read())
                     conn.commit()
-                    elapsed = time.time() - start_time
+                    elapsed = time.perf_counter() - start_time
                     print(f"[OK] {elapsed:.3f}s")
                     return elapsed
         except Exception as e:
@@ -260,7 +260,7 @@ class PgvectorEngine(VectorSearchEngine):
             LIMIT {top_k};
         """
 
-        start_time = time.time()
+        start_time = time.perf_counter()
         try:
             conn = self._get_connection()
             with conn.cursor() as cur:
@@ -270,7 +270,7 @@ class PgvectorEngine(VectorSearchEngine):
                     cur.execute("SET LOCAL hnsw.iterative_scan = relaxed_order;")
                 cur.execute(query, tuple(params))
                 docs = cur.fetchall()
-                took_ms = (time.time() - start_time) * 1000
+                took_ms = (time.perf_counter() - start_time) * 1000
                 cur.execute("COMMIT;")
 
                 return SearchResult(
