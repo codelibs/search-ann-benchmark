@@ -188,10 +188,10 @@ class LanceDBEngine(VectorSearchEngine):
                 "section": doc.get("section", ""),
             })
 
-        start_time = time.time()
+        start_time = time.perf_counter()
         try:
             self._get_table().add(data)
-            elapsed = time.time() - start_time
+            elapsed = time.perf_counter() - start_time
             logger.debug(f"Insert completed: {len(ids)} docs in {elapsed:.3f}s [OK]")
             print(f"[OK] {elapsed:.3f}s")
             return elapsed
@@ -206,9 +206,9 @@ class LanceDBEngine(VectorSearchEngine):
         LanceDB builds indexes after data insertion for optimal performance.
         """
         logger.info("Building vector index...")
-        start = time.time()
+        start = time.perf_counter()
         self._create_vector_index()
-        elapsed = time.time() - start
+        elapsed = time.perf_counter() - start
         logger.info(f"Vector index built in {elapsed:.1f}s")
 
         # Create scalar index for filtering
@@ -228,7 +228,7 @@ class LanceDBEngine(VectorSearchEngine):
         """Execute a vector search query."""
         cfg = self.dataset_config
 
-        start_time = time.time()
+        start_time = time.perf_counter()
         try:
             # Build query
             query = self._get_table().search(query_vector)
@@ -250,7 +250,7 @@ class LanceDBEngine(VectorSearchEngine):
             query = query.refine_factor(2)
 
             results = query.limit(top_k).to_list()
-            took_ms = (time.time() - start_time) * 1000
+            took_ms = (time.perf_counter() - start_time) * 1000
 
             # Extract results
             ids_list = [int(r.get("id", 0)) for r in results]

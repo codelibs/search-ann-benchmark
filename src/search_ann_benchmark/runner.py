@@ -13,10 +13,11 @@ import numpy as np
 import pandas as pd
 
 from search_ann_benchmark.config import DatasetConfig, get_dataset_config
-from search_ann_benchmark.core.base import VectorSearchEngine
+from search_ann_benchmark.core.base import SearchResult, VectorSearchEngine
 from search_ann_benchmark.core.docker import DockerManager
 from search_ann_benchmark.core.embedding import ContentLoader, EmbeddingLoader
 from search_ann_benchmark.core.logging import get_logger
+from search_ann_benchmark.core.measurement import low_noise_measurement
 from search_ann_benchmark.core.metrics import (
     BenchmarkMetrics,
     MetricsCalculator,
@@ -76,11 +77,11 @@ class BenchmarkRunner:
 
         # Wait for engine to be ready
         logger.debug("Calling wait_until_ready()")
-        start = time.time()
+        start = time.perf_counter()
         if not self.engine.wait_until_ready():
-            logger.error(f"Failed to start {self.engine.engine_name} after {time.time()-start:.1f}s")
+            logger.error(f"Failed to start {self.engine.engine_name} after {time.perf_counter()-start:.1f}s")
             raise RuntimeError(f"Failed to start {self.engine.engine_name}")
-        logger.debug(f"Engine ready after {time.time()-start:.1f}s")
+        logger.debug(f"Engine ready after {time.perf_counter()-start:.1f}s")
 
     def create_index(self) -> None:
         """Create the search index."""
@@ -92,9 +93,9 @@ class BenchmarkRunner:
             self.engine.create_database()
 
         logger.debug("Creating index...")
-        start = time.time()
+        start = time.perf_counter()
         self.engine.create_index()
-        logger.debug(f"Index created in {time.time()-start:.1f}s")
+        logger.debug(f"Index created in {time.perf_counter()-start:.1f}s")
 
         # Wait for index to be ready if needed
         if hasattr(self.engine, "wait_for_index_ready"):
@@ -126,7 +127,7 @@ class BenchmarkRunner:
         logger.debug(f"Loading embeddings from {cfg.embedding_path}")
         logger.debug(f"Target index size: {cfg.index_size}, bulk size: {cfg.bulk_size}")
 
-        start_time = time.time()
+        start_time = time.perf_counter()
         total_process_time = 0.0
 
         documents: list[dict[str, Any]] = []
@@ -154,11 +155,11 @@ class BenchmarkRunner:
 
             if len(ids) >= cfg.bulk_size:
                 batch_num += 1
-                batch_start = time.time()
+                batch_start = time.perf_counter()
                 logger.debug(f"Inserting batch {batch_num}: {len(ids)} docs (total: {count})")
                 t = self.engine.insert_documents(documents, embeddings, ids)
                 total_process_time += t
-                logger.debug(f"Batch {batch_num} completed in {time.time()-batch_start:.2f}s (process_time: {t:.2f}s)")
+                logger.debug(f"Batch {batch_num} completed in {time.perf_counter()-batch_start:.2f}s (process_time: {t:.2f}s)")
                 documents = []
                 embeddings = []
                 ids = []
@@ -166,19 +167,19 @@ class BenchmarkRunner:
         # Insert remaining documents
         if ids:
             batch_num += 1
-            batch_start = time.time()
+            batch_start = time.perf_counter()
             logger.debug(f"Inserting final batch {batch_num}: {len(ids)} docs (total: {count})")
             t = self.engine.insert_documents(documents, embeddings, ids)
             total_process_time += t
-            logger.debug(f"Final batch completed in {time.time()-batch_start:.2f}s (process_time: {t:.2f}s)")
+            logger.debug(f"Final batch completed in {time.perf_counter()-batch_start:.2f}s (process_time: {t:.2f}s)")
 
         # Wait for indexing to complete
         logger.debug("Calling wait_for_indexing_complete()")
-        wait_start = time.time()
+        wait_start = time.perf_counter()
         self.engine.wait_for_indexing_complete()
-        logger.debug(f"Indexing complete wait finished in {time.time()-wait_start:.1f}s")
+        logger.debug(f"Indexing complete wait finished in {time.perf_counter()-wait_start:.1f}s")
 
-        execution_time = time.time() - start_time
+        execution_time = time.perf_counter() - start_time
         hours, remainder = divmod(execution_time, 3600)
         minutes, seconds = divmod(remainder, 60)
         logger.info(f"Indexing complete: {count} docs in {int(hours):02d}:{int(minutes):02d}:{seconds:02.2f} (process_time: {timedelta(seconds=total_process_time)})")
@@ -228,7 +229,7 @@ class BenchmarkRunner:
             if with_filter and self.section_values:
                 warmup_filter = self.engine.get_filter_generator(self.section_values)
             logger.info(f"Running {warmup_count} warmup queries...")
-            warmup_start = time.time()
+            warmup_start = time.perf_counter()
             self._run_queries(
                 output_path=None,
                 max_size=warmup_count,
@@ -236,14 +237,14 @@ class BenchmarkRunner:
                 offset=0,
                 filter_generator=warmup_filter,
             )
-            logger.debug(f"Warmup completed in {time.time()-warmup_start:.1f}s")
+            logger.debug(f"Warmup completed in {time.perf_counter()-warmup_start:.1f}s")
 
             # Run actual benchmark with fresh filter generator
             actual_filter = None
             if with_filter and self.section_values:
                 actual_filter = self.engine.get_filter_generator(self.section_values)
             logger.info(f"Running {query_count} queries...")
-            benchmark_start = time.time()
+            benchmark_start = time.perf_counter()
             self._run_queries(
                 output_path=output_filename,
                 max_size=query_count,
@@ -251,7 +252,7 @@ class BenchmarkRunner:
                 offset=cfg.index_size,
                 filter_generator=actual_filter,
             )
-            logger.debug(f"Benchmark queries completed in {time.time()-benchmark_start:.1f}s")
+            logger.debug(f"Benchmark queries completed in {time.perf_counter()-benchmark_start:.1f}s")
 
             # Calculate metrics
             metrics = self._metrics_calculator.calculate_from_file(
@@ -269,6 +270,61 @@ class BenchmarkRunner:
 
         return search_results
 
+    def _iter_query_batches(
+        self,
+        offset: int,
+        normalize: bool,
+    ) -> Generator[tuple[list[int], list[list[float]]], None, None]:
+        """Yield successive batches of (doc_ids, preprocessed query vectors).
+
+        All vector preprocessing (dtype cast, normalization, list conversion)
+        happens here so the measurement loop only has to call ``engine.search``.
+        Embedding shards are yielded in their on-disk order, wrapping back to
+        ``0.npz`` once ``num_of_docs`` is exhausted. The consumer is expected
+        to stop iterating once it has accumulated enough successful queries.
+
+        Args:
+            offset: Starting offset in embeddings
+            normalize: Whether to L2-normalize each vector
+
+        Yields:
+            ``(doc_ids, query_vectors)`` pairs. Each batch corresponds to one
+            ``.npz`` shard.
+        """
+        cfg = self.engine.dataset_config
+        doc_id = 0
+        pos = offset
+
+        while True:
+            npz_path = cfg.embedding_path / f"{pos}.npz"
+            if not npz_path.exists():
+                if pos == 0:
+                    raise FileNotFoundError(
+                        f"Embedding file not found: {npz_path}. "
+                        "Run 'bash scripts/setup.sh' to download the dataset."
+                    )
+                pos = 0
+                continue
+
+            with np.load(npz_path) as data:
+                raw = data["embs"]
+
+            shard_f32 = raw.astype(np.float32, copy=False)
+            if normalize:
+                norms = np.linalg.norm(shard_f32, axis=1, keepdims=True)
+                # Guard against zero vectors that would otherwise produce NaNs.
+                norms = np.where(norms == 0, 1.0, norms)
+                shard_f32 = shard_f32 / norms
+
+            doc_ids = list(range(doc_id + 1, doc_id + 1 + len(shard_f32)))
+            doc_id += len(shard_f32)
+
+            yield doc_ids, shard_f32.tolist()
+
+            pos += 100000
+            if pos > cfg.num_of_docs:
+                pos = 0
+
     def _run_queries(
         self,
         output_path: str | None,
@@ -279,6 +335,13 @@ class BenchmarkRunner:
     ) -> None:
         """Run search queries.
 
+        The per-query measurement loop is intentionally minimal: query vector
+        preprocessing, filter generation, result buffering, progress logging,
+        and disk writes are deliberately performed outside the search call so
+        they do not contribute to per-query latency jitter. Each engine still
+        measures its own ``took_ms`` internally; the runner just avoids adding
+        noise around that measurement.
+
         Args:
             output_path: Path to write results (None for warmup)
             max_size: Maximum number of queries
@@ -287,87 +350,108 @@ class BenchmarkRunner:
             filter_generator: Optional filter query generator
         """
         cfg = self.engine.dataset_config
-        start_time = time.time()
-        count = 0
-        doc_id = 0
-        pos = offset
-        running = True
+        normalize = cfg.distance in (
+            "dot_product", "Dot", "IP", "ip", "<#>", "dotproduct",
+        )
 
-        writer = None
         if output_path:
             Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-            writer = SearchResultsWriter(output_path)
-            writer.__enter__()
 
+        # Preallocate per-batch result buffers so disk writes can be deferred
+        # until after the timed window.
+        debug_progress = logger.isEnabledFor(logging.DEBUG)
+        progress_every = 1000 if debug_progress else 10000
+        engine_search = self.engine.search  # local alias to skip attribute lookup
+
+        start_time = time.perf_counter()
+        count = 0
+        progress_start = start_time
+
+        writer = SearchResultsWriter(output_path) if output_path else None
         try:
-            while running:
-                npz_path = cfg.embedding_path / f"{pos}.npz"
-                if not npz_path.exists():
-                    if pos == 0:
-                        raise FileNotFoundError(f"Embedding file not found: {npz_path}. Run 'bash scripts/setup.sh' to download the dataset.")
-                    pos = 0
-                    continue
+            if writer:
+                writer.__enter__()
 
-                with np.load(npz_path) as data:
-                    embeddings = data["embs"]
-
-                for embedding in embeddings:
-                    doc_id += 1
-                    if count >= max_size:
-                        running = False
+            with low_noise_measurement():
+                batch_iter = self._iter_query_batches(offset=offset, normalize=normalize)
+                done = False
+                for doc_ids, query_vectors in batch_iter:
+                    if done:
                         break
 
-                    embedding = embedding.astype(np.float32)
-                    if cfg.distance in ("dot_product", "Dot", "IP", "ip", "<#>", "dotproduct"):
-                        embedding = embedding / np.linalg.norm(embedding)
+                    # Cap the batch so we never run more queries than needed.
+                    remaining = max_size - count
+                    if remaining <= 0:
+                        break
+                    if remaining < len(query_vectors):
+                        doc_ids = doc_ids[:remaining]
+                        query_vectors = query_vectors[:remaining]
 
-                    filter_query = None
-                    if filter_generator:
-                        filter_query = next(filter_generator)
+                    # Pre-generate filter queries for the whole batch so the
+                    # generator's overhead is outside the timed search call.
+                    if filter_generator is not None:
+                        filter_queries: list[dict[str, Any] | None] = [
+                            next(filter_generator) for _ in query_vectors
+                        ]
+                    else:
+                        filter_queries = [None] * len(query_vectors)
 
-                    result = self.engine.search(
-                        query_vector=embedding.tolist(),
-                        top_k=page_size,
-                        filter_query=filter_query,
-                    )
-
-                    if result.took_ms == -1:
-                        continue
-
-                    if writer:
-                        writer.write_result(
-                            query_id=doc_id,
-                            took=result.took_ms,
-                            hits=result.hits,
-                            ids=result.ids,
-                            scores=result.scores,
-                            total_hits=result.total_hits,
+                    batch_results: list[tuple[int, SearchResult]] = []
+                    for doc_id, query_vector, filter_query in zip(
+                        doc_ids, query_vectors, filter_queries,
+                    ):
+                        # === Hot measurement region: keep this minimal ===
+                        result = engine_search(
+                            query_vector=query_vector,
+                            top_k=page_size,
+                            filter_query=filter_query,
                         )
+                        # =================================================
+                        batch_results.append((doc_id, result))
 
-                    count += 1
-                    if logger.isEnabledFor(logging.DEBUG):
-                        if count % 1000 == 0:
-                            elapsed = time.time() - start_time
-                            qps = count / elapsed if elapsed > 0 else 0
-                            logger.debug(f"Query progress: {count}/{max_size} ({qps:.1f} qps, elapsed={elapsed:.1f}s)")
-                    elif count % 10000 == 0:
-                        elapsed = time.time() - start_time
-                        qps = count / elapsed if elapsed > 0 else 0
-                        logger.info(f"Sent {count}/{max_size} queries ({qps:.1f} qps)")
-
-                pos += 100000
-                if pos > cfg.num_of_docs:
-                    pos = 0
-
+                    # All bookkeeping (validation, IO, logging) happens out
+                    # of the timed window.
+                    for doc_id, result in batch_results:
+                        if result.took_ms == -1:
+                            continue
+                        if writer:
+                            writer.write_result(
+                                query_id=doc_id,
+                                took=result.took_ms,
+                                hits=result.hits,
+                                ids=result.ids,
+                                scores=result.scores,
+                                total_hits=result.total_hits,
+                            )
+                        count += 1
+                        if count >= max_size:
+                            done = True
+                        if count % progress_every == 0:
+                            now = time.perf_counter()
+                            window = now - progress_start
+                            qps = progress_every / window if window > 0 else 0.0
+                            msg = (
+                                f"Query progress: {count}/{max_size} "
+                                f"({qps:.1f} qps over last {progress_every}, "
+                                f"window={window:.2f}s)"
+                            )
+                            if debug_progress:
+                                logger.debug(msg)
+                            else:
+                                logger.info(msg)
+                            progress_start = now
         finally:
             if writer:
                 writer.__exit__(None, None, None)
 
-        execution_time = time.time() - start_time
+        execution_time = time.perf_counter() - start_time
         hours, remainder = divmod(execution_time, 3600)
         minutes, seconds = divmod(remainder, 60)
         qps = count / execution_time if execution_time > 0 else 0
-        logger.info(f"Queries complete: {count} queries in {int(hours):02d}:{int(minutes):02d}:{seconds:02.2f} ({qps:.1f} qps)")
+        logger.info(
+            f"Queries complete: {count} queries in "
+            f"{int(hours):02d}:{int(minutes):02d}:{seconds:02.2f} ({qps:.1f} qps)"
+        )
 
     def _get_ground_truth_filename(self, page_size: int, with_filter: bool) -> str:
         """Get ground truth filename for precision calculation."""

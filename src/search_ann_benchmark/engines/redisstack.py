@@ -67,9 +67,9 @@ class RedisStackEngine(VectorSearchEngine):
         import redis
 
         logger.info(f"Waiting for {self.engine_config.container_name}...")
-        start = time.time()
+        start = time.perf_counter()
         for attempt in range(timeout):
-            elapsed = time.time() - start
+            elapsed = time.perf_counter() - start
             try:
                 logger.debug(f"Health check attempt {attempt+1}/{timeout}, elapsed={elapsed:.1f}s")
                 client = redis.Redis(
@@ -176,7 +176,7 @@ class RedisStackEngine(VectorSearchEngine):
         client = self._get_client()
         pipeline = client.pipeline(transaction=False)
 
-        start_time = time.time()
+        start_time = time.perf_counter()
         try:
             for doc, embedding, doc_id in zip(documents, embeddings, ids):
                 key = f"doc:{doc_id}"
@@ -196,7 +196,7 @@ class RedisStackEngine(VectorSearchEngine):
                 pipeline.hset(key, mapping=fields)
 
             pipeline.execute()
-            elapsed = time.time() - start_time
+            elapsed = time.perf_counter() - start_time
             print(f"[OK] {elapsed:.3f}s")
             return elapsed
         except Exception as e:
@@ -227,7 +227,7 @@ class RedisStackEngine(VectorSearchEngine):
         else:
             query_str = "*=>[KNN $K @embedding $BLOB EF_RUNTIME $EF]"
 
-        start_time = time.time()
+        start_time = time.perf_counter()
         try:
             # FT.SEARCH idx query PARAMS 6 K top_k BLOB bytes EF ef SORTBY __embedding_score
             result = client.execute_command(
@@ -240,7 +240,7 @@ class RedisStackEngine(VectorSearchEngine):
                 "LIMIT", "0", str(top_k),
                 "DIALECT", "2",
             )
-            took_ms = (time.time() - start_time) * 1000
+            took_ms = (time.perf_counter() - start_time) * 1000
 
             # Parse result: [total_hits, doc_key1, [field1, value1, ...], doc_key2, ...]
             total_hits = result[0]

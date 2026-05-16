@@ -80,9 +80,9 @@ class VespaEngine(VectorSearchEngine):
 
     def wait_until_ready(self, timeout: int = 60) -> bool:
         logger.info(f"Waiting for {self.engine_config.container_name}...")
-        start = time.time()
+        start = time.perf_counter()
         for attempt in range(timeout):
-            elapsed = time.time() - start
+            elapsed = time.perf_counter() - start
             try:
                 logger.debug(f"Health check attempt {attempt+1}/{timeout}, elapsed={elapsed:.1f}s")
                 response = requests.get(f"{self.management_url}/state/v1/health", timeout=5)
@@ -300,9 +300,9 @@ schema {cfg.index_name} {{
                 "vespa", "feed", str(temp_path),
                 "--target", self.base_url,
             ]
-            start_time = time.time()
+            start_time = time.perf_counter()
             result = subprocess.run(vespa_cmd, capture_output=True, text=True)
-            elapsed = time.time() - start_time
+            elapsed = time.perf_counter() - start_time
 
             if result.returncode == 0 and self._check_error_counts(result.stdout):
                 print(f"[OK] {elapsed:.2f}s")
@@ -354,7 +354,7 @@ schema {cfg.index_name} {{
             payload = {"fields": {**doc, "embedding": {"values": embedding}}}
             requests_data.append((doc_url, payload))
 
-        start_time = time.time()
+        start_time = time.perf_counter()
         success_count = 0
         fail_count = 0
 
@@ -371,7 +371,7 @@ schema {cfg.index_name} {{
                     else:
                         fail_count += 1
 
-        elapsed = time.time() - start_time
+        elapsed = time.perf_counter() - start_time
 
         if fail_count == 0:
             print(f"[OK] {elapsed:.2f}s")

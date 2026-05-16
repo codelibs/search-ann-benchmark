@@ -31,9 +31,9 @@ class DockerManager:
         """
         logger.info(f"Starting {self.container_name}...")
         logger.debug(f"Command: {' '.join(docker_cmd)}")
-        start = time.time()
+        start = time.perf_counter()
         result = subprocess.run(docker_cmd, capture_output=True, text=True)
-        elapsed = time.time() - start
+        elapsed = time.perf_counter() - start
         if result.returncode == 0:
             logger.info(f"Started {self.container_name} in {elapsed:.1f}s [OK]")
             logger.debug(f"stdout: {result.stdout[:500] if result.stdout else '(empty)'}")
@@ -51,13 +51,13 @@ class DockerManager:
             True if successful
         """
         logger.info(f"Stopping {self.container_name}...")
-        start = time.time()
+        start = time.perf_counter()
         result = subprocess.run(
             ["docker", "stop", self.container_name],
             capture_output=True,
             text=True,
         )
-        elapsed = time.time() - start
+        elapsed = time.perf_counter() - start
         if result.returncode == 0:
             logger.info(f"Stopped {self.container_name} in {elapsed:.1f}s [OK]")
             return True
@@ -75,13 +75,13 @@ class DockerManager:
             True if successful
         """
         logger.debug("Running docker system prune...")
-        start = time.time()
+        start = time.perf_counter()
         result = subprocess.run(
             ["docker", "system", "prune", "-f"],
             capture_output=True,
             text=True,
         )
-        elapsed = time.time() - start
+        elapsed = time.perf_counter() - start
         if result.returncode == 0:
             logger.debug(f"Docker prune completed in {elapsed:.1f}s [OK]")
             return True
@@ -158,9 +158,9 @@ class DockerManager:
 
         logger.info(f"Starting services from {compose_file}...")
         logger.debug(f"Command: {' '.join(cmd)}")
-        start = time.time()
+        start = time.perf_counter()
         result = subprocess.run(cmd, capture_output=True, text=True)
-        elapsed = time.time() - start
+        elapsed = time.perf_counter() - start
         if result.returncode == 0:
             logger.info(f"Services started in {elapsed:.1f}s [OK]")
             return True
@@ -186,9 +186,9 @@ class DockerManager:
 
         logger.info(f"Stopping services from {compose_file}...")
         logger.debug(f"Command: {' '.join(cmd)}")
-        start = time.time()
+        start = time.perf_counter()
         result = subprocess.run(cmd, capture_output=True, text=True)
-        elapsed = time.time() - start
+        elapsed = time.perf_counter() - start
         if result.returncode == 0:
             logger.info(f"Services stopped in {elapsed:.1f}s [OK]")
             return True

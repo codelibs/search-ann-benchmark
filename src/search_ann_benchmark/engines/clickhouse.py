@@ -110,9 +110,9 @@ class ClickHouseEngine(VectorSearchEngine):
 
     def wait_until_ready(self, timeout: int = 60) -> bool:
         logger.info(f"Waiting for {self.engine_config.container_name}...")
-        start = time.time()
+        start = time.perf_counter()
         for attempt in range(timeout):
-            elapsed = time.time() - start
+            elapsed = time.perf_counter() - start
             try:
                 logger.debug(f"Health check attempt {attempt+1}/{timeout}, elapsed={elapsed:.1f}s")
                 response = requests.get(f"{self.base_url}/ping", timeout=5)
@@ -222,7 +222,7 @@ class ClickHouseEngine(VectorSearchEngine):
         insert_data = "\n".join(rows)
         insert_sql = f"INSERT INTO {cfg.index_name} FORMAT JSONEachRow"
 
-        start_time = time.time()
+        start_time = time.perf_counter()
         try:
             response = self._get_session().post(
                 f"{self.base_url}/",
@@ -234,7 +234,7 @@ class ClickHouseEngine(VectorSearchEngine):
             if response.status_code != 200:
                 raise Exception(f"Insert failed: {response.status_code} - {response.text}")
 
-            elapsed = time.time() - start_time
+            elapsed = time.perf_counter() - start_time
             print(f"[OK] {elapsed:.3f}s")
             return elapsed
         except Exception as e:
@@ -320,10 +320,10 @@ class ClickHouseEngine(VectorSearchEngine):
                 {settings_clause}
         """
 
-        start_time = time.time()
+        start_time = time.perf_counter()
         try:
             result = self._execute_query(query, timeout=30)
-            took_ms = (time.time() - start_time) * 1000
+            took_ms = (time.perf_counter() - start_time) * 1000
 
             data = result.get("data", [])
             ids = [int(row.get("doc_id", 0)) for row in data]

@@ -209,9 +209,9 @@ ngt:
             return False
 
         logger.info(f"Waiting for {self.vald_config.container_name}...")
-        start = time.time()
+        start = time.perf_counter()
         for attempt in range(timeout):
-            elapsed = time.time() - start
+            elapsed = time.perf_counter() - start
             try:
                 logger.debug(f"Health check attempt {attempt + 1}/{timeout}, elapsed={elapsed:.1f}s")
                 # Check liveness endpoint
@@ -346,14 +346,14 @@ ngt:
 
         multi_request = payload_pb2.Insert.MultiRequest(requests=requests_list)
 
-        start_time = time.time()
+        start_time = time.perf_counter()
         try:
             self._insert_stub.MultiInsert(multi_request)
-            elapsed = time.time() - start_time
+            elapsed = time.perf_counter() - start_time
             print(f"[OK] {elapsed:.3f}s")
             return elapsed
         except Exception as e:
-            elapsed = time.time() - start_time
+            elapsed = time.perf_counter() - start_time
             print(f"[FAIL] {e}")
             logger.error(f"Insert failed: {e}")
             return elapsed
@@ -388,10 +388,10 @@ ngt:
             config=config,
         )
 
-        start_time = time.time()
+        start_time = time.perf_counter()
         try:
             response = self._search_stub.Search(request)
-            elapsed = (time.time() - start_time) * 1000  # Convert to ms
+            elapsed = (time.perf_counter() - start_time) * 1000  # Convert to ms
 
             results = response.results
 
@@ -425,7 +425,7 @@ ngt:
                 scores=[r.distance for r in results],
             )
         except Exception as e:
-            elapsed = (time.time() - start_time) * 1000
+            elapsed = (time.perf_counter() - start_time) * 1000
             logger.error(f"Search failed: {e}")
             return SearchResult(query_id=0, took_ms=elapsed, hits=0, ids=[], scores=[])
 
@@ -449,7 +449,7 @@ ngt:
 
         # Wait for index to stabilize
         logger.debug(f"Waiting for indexing to complete (stable_count={stable_count}, interval={check_interval}s)")
-        start = time.time()
+        start = time.perf_counter()
         count = 0
         total_checks = 0
         last_stored = 0
@@ -470,7 +470,7 @@ ngt:
                     count = 0
                     last_stored = stored
 
-                elapsed = time.time() - start
+                elapsed = time.perf_counter() - start
                 if logger.isEnabledFor(logging.DEBUG):
                     logger.debug(
                         f"Indexing check {total_checks}: stored={stored}, uncommitted={uncommitted}, stable_count={count}/{stable_count}, elapsed={elapsed:.1f}s"
@@ -483,7 +483,7 @@ ngt:
 
             time.sleep(check_interval)
 
-        elapsed = time.time() - start
+        elapsed = time.perf_counter() - start
         if not logger.isEnabledFor(logging.DEBUG):
             print(".")
         logger.debug(f"Indexing complete after {total_checks} checks in {elapsed:.1f}s")
