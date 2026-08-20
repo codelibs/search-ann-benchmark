@@ -23,7 +23,7 @@ class OpenSearchConfig(EngineConfig):
     name: str = "opensearch"
     host: str = "localhost"
     port: int = 9212
-    version: str = "3.7.0"
+    version: str = "3.8.0"
     container_name: str = "benchmark_opensearch"
     heap: str = "2g"
     engine: str = "lucene"  # or "faiss"
