@@ -22,7 +22,7 @@ class QdrantConfig(EngineConfig):
     name: str = "qdrant"
     host: str = "localhost"
     port: int = 6344
-    version: str = "1.18.0"
+    version: str = "1.19.0"
     container_name: str = "benchmark_qdrant"
 
 
@@ -218,7 +218,7 @@ class QdrantEngine(VectorSearchEngine):
     ) -> SearchResult:
         cfg = self.dataset_config
         query: dict[str, Any] = {
-            "vector": query_vector,
+            "query": query_vector,
             "limit": top_k,
             "params": {
                 "hnsw_ef": cfg.hnsw_ef,
@@ -230,7 +230,7 @@ class QdrantEngine(VectorSearchEngine):
             query["filter"] = filter_query
 
         response = self._get_session().post(
-            f"{self.base_url}/collections/{cfg.index_name}/points/search",
+            f"{self.base_url}/collections/{cfg.index_name}/points/query",
             headers={"Content-Type": "application/json"},
             json=query,
             timeout=10,
@@ -242,7 +242,7 @@ class QdrantEngine(VectorSearchEngine):
                 print(f"[FAIL] {response.text}")
                 return SearchResult(query_id=0, took_ms=-1, hits=-1, ids=[], scores=[])
 
-            results = obj.get("result", [])
+            results = obj.get("result", {}).get("points", [])
             return SearchResult(
                 query_id=0,
                 took_ms=obj.get("time", 0) * 1000,
